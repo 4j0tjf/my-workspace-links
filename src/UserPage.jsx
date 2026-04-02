@@ -3,11 +3,21 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import './index.css'; 
 
+/* --- 🌐 파비콘(Favicon) 이미지 URL 자동 생성 함수 --- */
+const getFaviconUrl = (url) => {
+  try {
+    // URL에서 도메인(hostname)만 추출 (예: https://www.google.com/search -> www.google.com)
+    const domain = new URL(url).hostname;
+    // 구글 파비콘 API (sz=64는 64x64 픽셀의 선명한 화질을 의미함)
+    return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+  } catch (error) {
+    return ''; // URL이 잘못된 경우 빈 문자열 반환
+  }
+};
+
 /* --- 🔍 텍스트 하이라이트 컴포넌트 --- */
 function HighlightText({ text, highlight }) {
   if (!highlight.trim()) return <span>{text}</span>;
-  
-  // 정규식 특수문자 에러 방지
   const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escapeRegExp(highlight)})`, 'gi');
   const parts = text.split(regex);
@@ -32,11 +42,8 @@ function UserPage() {
   const [activeTab, setActiveTab] = useState('');
   const [loading, setLoading] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
-
-  // 🔍 검색 상태 관리
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 테마 초기화
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
@@ -45,7 +52,6 @@ function UserPage() {
     }
   }, []);
 
-  // 테마 전환 토글
   const toggleTheme = () => {
     if (isDarkMode) {
       document.body.classList.remove('dark');
@@ -58,7 +64,6 @@ function UserPage() {
     }
   };
 
-  // 파이어베이스 데이터 불러오기 (order 정렬)
   useEffect(() => {
     const q = query(collection(db, 'tabs'), orderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -72,7 +77,6 @@ function UserPage() {
     return () => unsubscribe();
   }, [activeTab]);
 
-  // 🔍 검색 결과 필터링
   const searchResults = tabs.flatMap(tab => 
     (tab.links || [])
       .map((link, index) => ({ tab, link, index }))
@@ -88,7 +92,6 @@ function UserPage() {
     <div className="container">
       <h2 className="title">업무 링크 모음</h2>
 
-      {/* 🔍 링크 통합 검색창 */}
       <div style={{ marginBottom: '20px' }}>
         <input 
           type="text" 
@@ -103,7 +106,6 @@ function UserPage() {
         />
       </div>
       
-      {/* 🔍 검색어가 있을 때: 검색 결과 화면 렌더링 */}
       {searchQuery.trim() !== '' ? (
         <div style={{ background: 'var(--hover-bg)', padding: '20px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
           <h3 style={{ marginTop: 0 }}>🔎 검색 결과 ({searchResults.length}건)</h3>
@@ -114,25 +116,24 @@ function UserPage() {
               {searchResults.map((res, i) => (
                 <li key={i} style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', marginBottom: '10px', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', transition: 'background-color 0.2s' }}>
                   
-                  {/* 검색 결과 텍스트 (클릭 시 새 창으로 링크 열림) */}
                   <a href={res.link.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'var(--text-color)', flex: 1, wordBreak: 'break-all' }}>
                     <span style={{ display: 'inline-block', backgroundColor: 'var(--hover-bg)', color: 'var(--tab-active)', fontSize: '12px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px', marginBottom: '8px', border: '1px solid var(--border-color)' }}>
                       📂 {res.tab.name}
                     </span><br/>
-                    <strong style={{ fontSize: '16px' }}>
+                    
+                    {/* ✨ 검색 결과 영역에 파비콘 추가 */}
+                    <strong style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                      <img src={getFaviconUrl(res.link.url)} alt="" style={{ width: '18px', height: '18px', borderRadius: '3px', flexShrink: 0 }} />
                       <HighlightText text={res.link.title} highlight={searchQuery} />
-                    </strong><br/>
+                    </strong>
+                    
                     <span style={{ color: 'var(--tab-inactive)', fontSize: '13px' }}>
                       <HighlightText text={res.link.url} highlight={searchQuery} />
                     </span>
                   </a>
 
-                  {/* 탭으로 이동 버튼 */}
                   <button 
-                    onClick={() => {
-                      setActiveTab(res.tab.id); // 해당 탭으로 이동
-                      setSearchQuery(''); // 검색창 초기화하여 원래 화면으로 복귀
-                    }}
+                    onClick={() => { setActiveTab(res.tab.id); setSearchQuery(''); }}
                     style={{ background: 'var(--tab-inactive)', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
                     이 탭으로 이동 ➡️
@@ -143,7 +144,6 @@ function UserPage() {
           )}
         </div>
       ) : (
-        /* 검색어가 없을 때: 기존 탭 & 링크 화면 렌더링 */
         <>
           {tabs.length === 0 ? (
             <p>등록된 탭이 없습니다. 어드민 페이지에서 탭을 추가해주세요.</p>
@@ -155,8 +155,7 @@ function UserPage() {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     style={{
-                      padding: '10px 20px',
-                      cursor: 'pointer',
+                      padding: '10px 20px', cursor: 'pointer',
                       fontWeight: activeTab === tab.id ? 'bold' : 'normal',
                       color: activeTab === tab.id ? 'var(--tab-active)' : 'var(--tab-inactive)',
                       borderBottom: activeTab === tab.id ? '3px solid var(--tab-active)' : '3px solid transparent',
@@ -176,8 +175,15 @@ function UserPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="link-item"
+                    // ✨ 일반 링크 목록 영역에도 flex 속성을 주어 파비콘과 텍스트를 나란히 배치
+                    style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
                   >
-                    🔗 {link.title}
+                    <img 
+                      src={getFaviconUrl(link.url)} 
+                      alt="" 
+                      style={{ width: '24px', height: '24px', borderRadius: '4px', flexShrink: 0 }} 
+                    />
+                    <span style={{ fontWeight: '500' }}>{link.title}</span>
                   </a>
                 ))}
               </div>
@@ -186,7 +192,6 @@ function UserPage() {
         </>
       )}
 
-      {/* ☀️/🌙 테마 전환 버튼 */}
       <button onClick={toggleTheme} className="theme-toggle-btn" title="다크 모드 전환">
         {isDarkMode ? '🌙' : '☀️'}
       </button>
