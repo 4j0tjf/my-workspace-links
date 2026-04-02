@@ -1,15 +1,41 @@
 import { useState, useEffect } from 'react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
-import './index.css'; // 👈 방금 만든 CSS 파일을 불러옵니다.
+import './index.css'; 
 
 function UserPage() {
   const [tabs, setTabs] = useState([]);
   const [activeTab, setActiveTab] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // 🌙 다크모드 상태 관리 (기본값: false = 라이트모드)
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // 1. 첫 접속 시 이전 테마 설정 불러오기
   useEffect(() => {
-    const q = query(collection(db, 'tabs'), orderBy('createdAt', 'asc'));
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      setIsDarkMode(true);
+      document.body.classList.add('dark');
+    }
+  }, []);
+
+  // 2. 테마 전환 함수
+  const toggleTheme = () => {
+    if (isDarkMode) {
+      document.body.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+      setIsDarkMode(false);
+    } else {
+      document.body.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+      setIsDarkMode(true);
+    }
+  };
+
+  // 파이어베이스 데이터 불러오기
+  useEffect(() => {
+    const q = query(collection(db, 'tabs'), orderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const tabData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTabs(tabData);
@@ -40,8 +66,9 @@ function UserPage() {
                   padding: '10px 20px',
                   cursor: 'pointer',
                   fontWeight: activeTab === tab.id ? 'bold' : 'normal',
-                  color: activeTab === tab.id ? '#1a73e8' : '#5f6368',
-                  borderBottom: activeTab === tab.id ? '3px solid #1a73e8' : '3px solid transparent',
+                  // CSS 변수를 적용하여 다크모드 시 자동으로 색이 변하도록 처리
+                  color: activeTab === tab.id ? 'var(--tab-active)' : 'var(--tab-inactive)',
+                  borderBottom: activeTab === tab.id ? '3px solid var(--tab-active)' : '3px solid transparent',
                   marginBottom: '-2px'
                 }}
               >
@@ -65,6 +92,11 @@ function UserPage() {
           </div>
         </>
       )}
+
+      {/* ☀️/🌙 테마 전환 버튼 */}
+      <button onClick={toggleTheme} className="theme-toggle-btn" title="다크 모드 전환">
+        {isDarkMode ? '🌙' : '☀️'}
+      </button>
     </div>
   );
 }
