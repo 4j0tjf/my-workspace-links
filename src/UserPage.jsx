@@ -93,16 +93,28 @@ function UserPage() {
     <div className="container">
       <h2 className="title">업무 링크 모음</h2>
 
-      <div style={{ marginBottom: '20px' }}>
+      <div style={{ marginBottom: '20px', position: 'relative' }}>
+        <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--tab-active)', display: 'flex', alignItems: 'center' }}>
+          {/* Lucide Search Icon */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+        </div>
         <input 
           type="text" 
-          placeholder="🔍 찾고 싶은 링크 제목이나 주소를 검색하세요..." 
+          placeholder="찾고 싶은 링크 제목이나 주소를 검색하세요..." 
           value={searchQuery} 
           onChange={e => setSearchQuery(e.target.value)} 
           style={{ 
-            width: '100%', padding: '12px', fontSize: '16px', borderRadius: '8px', 
-            border: '2px solid var(--tab-active)', boxSizing: 'border-box',
-            backgroundColor: 'var(--card-bg)', color: 'var(--text-color)' 
+            width: '100%', 
+            padding: '12px 12px 12px 42px', /* 왼쪽 여백을 42px로 주어 아이콘과 안 겹치게 함 */
+            fontSize: '16px', 
+            borderRadius: '8px', 
+            border: '2px solid var(--tab-active)', 
+            boxSizing: 'border-box',
+            backgroundColor: 'var(--card-bg)', 
+            color: 'var(--text-color)',
+            outline: 'none'
           }} 
         />
       </div>
