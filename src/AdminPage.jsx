@@ -7,25 +7,18 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-/* --- 🌐 URL 검증 및 자동 포맷팅 함수 --- */
+// 🍞 토스트 알림 라이브러리 불러오기
+import toast, { Toaster } from 'react-hot-toast';
+
+/* --- 🌐 URL 검증 함수 --- */
 const formatAndValidateUrl = (url) => {
   let formattedUrl = url.trim();
-  
-  // 1. http:// 또는 https:// 로 시작하지 않으면 https:// 를 자동으로 붙임
-  if (!/^https?:\/\//i.test(formattedUrl)) {
-    formattedUrl = `https://${formattedUrl}`;
-  }
-  
-  // 2. 내장된 URL 객체를 활용해 실제 유효한 주소인지 검증
-  try {
-    new URL(formattedUrl);
-    return formattedUrl; // 유효하면 포맷팅된 URL 반환
-  } catch (error) {
-    return null; // 유효하지 않으면 null 반환
-  }
+  if (!/^https?:\/\//i.test(formattedUrl)) formattedUrl = `https://${formattedUrl}`;
+  try { new URL(formattedUrl); return formattedUrl; } 
+  catch (error) { return null; }
 };
 
-/* --- 🔍 텍스트 하이라이트 컴포넌트 --- */
+/* --- 🔍 하이라이트 컴포넌트 --- */
 function HighlightText({ text, highlight }) {
   if (!highlight.trim()) return <span>{text}</span>;
   const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -124,13 +117,31 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
+  /* --- 🚀 이벤트 로직 (토스트 적용) --- */
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      setIsLoggedIn(true);
+      toast.success('관리자로 로그인되었습니다!'); // ✨ 성공 토스트
+    } catch(err) {
+      toast.error('로그인 실패: 이메일과 비밀번호를 확인해주세요.'); // ✨ 에러 토스트
+    }
+  };
+
+  const handleLogout = () => {
+    signOut(auth);
+    setIsLoggedIn(false);
+    toast('로그아웃 되었습니다.', { icon: '👋' }); // ✨ 일반 토스트
+  };
+
   const handleAddTab = async () => {
     const trimmedName = newTabName.trim();
-    if (!trimmedName) return alert('탭 이름을 입력해주세요.');
+    if (!trimmedName) return toast.error('탭 이름을 입력해주세요.');
     const isDuplicate = tabs.some(tab => tab.name.toLowerCase() === trimmedName.toLowerCase());
     
     if (isDuplicate) {
-      alert(`'${trimmedName}'은(는) 이미 존재하는 탭 이름입니다. 다른 이름을 사용해주세요.`);
+      toast.error(`'${trimmedName}'은(는) 이미 존재하는 탭입니다.`);
       return;
     }
 
@@ -138,7 +149,23 @@ function AdminPage() {
       await addDoc(collection(db, 'tabs'), { name: trimmedName, links: [], order: tabs.length, createdAt: serverTimestamp() });
       setNewTabName('');
       setIsModalOpen(false);
-    } catch (error) { alert('탭 추가 오류'); }
+      toast.success('새 탭이 추가되었습니다!');
+    } catch (error) { toast.error('탭 추가 중 오류가 발생했습니다.'); }
+  };
+
+  const handleAddLink = async () => {
+    if (!newLinkTitle || !newLinkUrl) return toast.error('제목과 URL을 모두 입력해주세요.');
+
+    const validatedUrl = formatAndValidateUrl(newLinkUrl);
+    if (!validatedUrl) {
+      toast.error('올바른 웹사이트 주소 형식이 아닙니다.');
+      return;
+    }
+
+    const currentTab = tabs.find(t => t.id === activeTabId);
+    await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
+    setNewLinkTitle(''); setNewLinkUrl('');
+    toast.success('링크가 추가되었습니다!');
   };
 
   const handleTabDragEnd = async (event) => {
@@ -162,21 +189,6 @@ function AdminPage() {
     await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
   };
 
-  /* --- 🚀 링크 추가 로직 (URL 검증 포함) --- */
-  const handleAddLink = async () => {
-    if (!newLinkTitle || !newLinkUrl) return;
-
-    const validatedUrl = formatAndValidateUrl(newLinkUrl);
-    if (!validatedUrl) {
-      alert('올바른 웹사이트 주소를 입력해주세요!\n(예: google.com 또는 https://google.com)');
-      return;
-    }
-
-    const currentTab = tabs.find(t => t.id === activeTabId);
-    await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
-    setNewLinkTitle(''); setNewLinkUrl('');
-  };
-
   const searchResults = tabs.flatMap(tab => 
     (tab.links || []).map((link, index) => ({ tab, link, index }))
       .filter(({ link }) => link.title.toLowerCase().includes(searchQuery.toLowerCase()) || link.url.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -185,8 +197,9 @@ function AdminPage() {
   if (!isLoggedIn) {
     return (
       <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>
+        <Toaster position="top-center" /> {/* 🍞 로그인 화면용 토스트 */}
         <h2>로그인</h2>
-        <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); setIsLoggedIn(true); } catch(err) { alert('실패'); } }} style={{ display: 'inline-flex', flexDirection: 'column', gap: '10px' }}>
+        <form onSubmit={handleLogin} style={{ display: 'inline-flex', flexDirection: 'column', gap: '10px' }}>
           <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: '10px' }} />
           <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} style={{ padding: '10px' }} />
           <button type="submit" style={{ padding: '10px', background: '#d32f2f', color: 'white', border: 'none' }}>로그인</button>
@@ -199,9 +212,11 @@ function AdminPage() {
 
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <Toaster position="bottom-center" /> {/* 🍞 어드민 화면용 토스트 설정 (위치 하단 중앙) */}
+      
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ margin: 0 }}>⚙️ 어드민 도구</h2>
-        <button onClick={() => signOut(auth)}>로그아웃</button>
+        <button onClick={handleLogout}>로그아웃</button>
       </div>
 
       <div style={{ marginBottom: '20px' }}>
@@ -254,18 +269,20 @@ function AdminPage() {
                         key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx} 
                         editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl} 
                         onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }} 
-                        onDelete={async (l) => { if(confirm('삭제?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }} 
-                        /* --- 🚀 링크 수정 로직 (URL 검증 포함) --- */
+                        onDelete={async (l) => { 
+                          if(confirm('삭제하시겠습니까?')) {
+                            await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); 
+                            toast.success('삭제되었습니다.');
+                          }
+                        }} 
                         onSave={async () => { 
                           const validatedUrl = formatAndValidateUrl(editLinkUrl);
-                          if (!validatedUrl) {
-                            alert('올바른 웹사이트 주소를 입력해주세요!');
-                            return;
-                          }
+                          if (!validatedUrl) return toast.error('올바른 웹사이트 주소를 입력해주세요!');
                           const newLinks = [...activeTab.links]; 
                           newLinks[idx] = { title: editLinkTitle, url: validatedUrl }; 
                           await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks }); 
                           setEditingLinkIndex(null); 
+                          toast.success('성공적으로 수정되었습니다.');
                         }} 
                         onCancel={() => setEditingLinkIndex(null)} 
                       />
