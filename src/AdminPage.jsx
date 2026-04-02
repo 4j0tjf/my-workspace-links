@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react'; // 👈 useRef 추가됨
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, onSnapshot, query, orderBy, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -98,6 +98,9 @@ function AdminPage() {
   const [editLinkUrl, setEditLinkUrl] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // 📂 파일 업로드 창을 띄우기 위한 참조(ref)
+  const fileInputRef = useRef(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -118,56 +121,79 @@ function AdminPage() {
 
   /* --- 💾 데이터 백업 함수 --- */
   const handleExportData = () => {
-    if (tabs.length === 0) {
-      toast.error('백업할 데이터가 없습니다.');
-      return;
-    }
-
+    if (tabs.length === 0) return toast.error('백업할 데이터가 없습니다.');
     try {
-      // 1. 탭 데이터를 예쁘게 정렬된 JSON 문자열로 변환
       const jsonString = JSON.stringify(tabs, null, 2);
-      
-      // 2. Blob 객체를 생성하여 데이터를 파일 형태로 만듦
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      
-      // 3. 임시 <a> 태그를 만들어 다운로드 실행
       const link = document.createElement('a');
       link.href = url;
-      
-      // 파일명에 오늘 날짜 자동 삽입 (예: workspace_backup_2026-04-02.json)
-      const today = new Date().toISOString().slice(0, 10);
-      link.download = `workspace_backup_${today}.json`;
-      
+      link.download = `workspace_backup_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      // 4. 메모리 정리
       URL.revokeObjectURL(url);
-      
-      toast.success('데이터가 성공적으로 백업되었습니다! 💾');
-    } catch (error) {
-      toast.error('백업 중 오류가 발생했습니다.');
+      toast.success('데이터가 백업되었습니다! 💾');
+    } catch (error) { toast.error('백업 중 오류가 발생했습니다.'); }
+  };
+
+  /* --- 📂 데이터 복구 (Import) 함수 --- */
+  const handleImportData = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // 1. 안전을 위한 경고창 띄우기
+    if (!window.confirm('🚨 주의! 기존의 모든 탭과 링크가 삭제되고 업로드한 파일의 내용으로 덮어씌워집니다. 계속하시겠습니까?')) {
+      event.target.value = ''; // 취소 시 파일 선택 초기화
+      return;
     }
+
+    // 2. 파일 읽기
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        if (!Array.isArray(importedData)) throw new Error("잘못된 파일 형식입니다.");
+
+        // 3. 파이어베이스 Batch 업데이트 시작
+        const batch = writeBatch(db);
+
+        // 3-1. 기존 파이어베이스에 있는 모든 탭 데이터 삭제
+        tabs.forEach(tab => {
+          batch.delete(doc(db, 'tabs', tab.id));
+        });
+
+        // 3-2. 백업 파일에서 가져온 새로운 데이터를 추가
+        importedData.forEach((tabData, index) => {
+          const newDocRef = doc(collection(db, 'tabs')); // 새로운 임의의 ID 생성
+          batch.set(newDocRef, {
+            name: tabData.name,
+            links: tabData.links || [],
+            order: index, // 백업 당시의 순서 유지
+            createdAt: serverTimestamp()
+          });
+        });
+
+        // 4. 파이어베이스에 일괄 적용(Commit)
+        await batch.commit();
+        toast.success('데이터가 성공적으로 복구되었습니다! 🚀');
+        event.target.value = ''; // 성공 후 파일 선택 초기화
+
+      } catch (error) {
+        toast.error('파일을 읽는 데 실패했습니다. 올바른 백업 파일인지 확인해 주세요.');
+        event.target.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setIsLoggedIn(true);
-      toast.success('관리자로 로그인되었습니다!');
-    } catch(err) {
-      toast.error('로그인 실패: 이메일과 비밀번호를 확인해주세요.');
-    }
+    try { await signInWithEmailAndPassword(auth, email, password); setIsLoggedIn(true); toast.success('관리자로 로그인되었습니다!'); } 
+    catch(err) { toast.error('로그인 실패: 이메일과 비밀번호를 확인해주세요.'); }
   };
 
-  const handleLogout = () => {
-    signOut(auth);
-    setIsLoggedIn(false);
-    toast('로그아웃 되었습니다.', { icon: '👋' });
-  };
+  const handleLogout = () => { signOut(auth); setIsLoggedIn(false); toast('로그아웃 되었습니다.', { icon: '👋' }); };
 
   const handleAddTab = async () => {
     const trimmedName = newTabName.trim();
@@ -177,9 +203,7 @@ function AdminPage() {
 
     try {
       await addDoc(collection(db, 'tabs'), { name: trimmedName, links: [], order: tabs.length, createdAt: serverTimestamp() });
-      setNewTabName('');
-      setIsModalOpen(false);
-      toast.success('새 탭이 추가되었습니다!');
+      setNewTabName(''); setIsModalOpen(false); toast.success('새 탭이 추가되었습니다!');
     } catch (error) { toast.error('탭 추가 중 오류가 발생했습니다.'); }
   };
 
@@ -190,8 +214,7 @@ function AdminPage() {
 
     const currentTab = tabs.find(t => t.id === activeTabId);
     await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
-    setNewLinkTitle(''); setNewLinkUrl('');
-    toast.success('링크가 추가되었습니다!');
+    setNewLinkTitle(''); setNewLinkUrl(''); toast.success('링크가 추가되었습니다!');
   };
 
   const handleTabDragEnd = async (event) => {
@@ -267,17 +290,33 @@ function AdminPage() {
         </div>
       ) : (
         <>
-          {/* ✨ 새 탭 버튼과 백업 버튼을 나란히 배치 */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          {/* ✨ 기능 버튼들을 3개로 확장 */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
             <button 
               onClick={() => setIsModalOpen(true)}
-              style={{ flex: 1, padding: '12px', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              style={{ flex: 1, minWidth: '120px', padding: '12px', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
             >
               + 새 탭 만들기
             </button>
+            
+            {/* 데이터 복구용 숨겨진 input 태그 */}
+            <input 
+              type="file" 
+              accept=".json" 
+              ref={fileInputRef} 
+              style={{ display: 'none' }} 
+              onChange={handleImportData} 
+            />
+            <button 
+              onClick={() => fileInputRef.current.click()} // 클릭 시 input 파일 창을 대신 열어줌
+              style={{ flex: 1, minWidth: '120px', padding: '12px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              📂 데이터 복구 (.json)
+            </button>
+            
             <button 
               onClick={handleExportData}
-              style={{ flex: 1, padding: '12px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+              style={{ flex: 1, minWidth: '120px', padding: '12px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
             >
               💾 데이터 백업 (.json)
             </button>
