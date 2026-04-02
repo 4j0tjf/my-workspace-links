@@ -3,15 +3,16 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import './index.css'; 
 
+/* --- 🌐 기본 아이콘 (지구본 모양의 SVG) --- */
+const DEFAULT_FAVICON = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%239aa0a6"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 00-1.38-3.56A8.03 8.03 0 0118.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 015.08 16zm2.95-8H5.08a7.987 7.987 0 013.9-3.56c-.6.11-1.06.31-1.38.56zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm1.2 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 01-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>';
+
 /* --- 🌐 파비콘(Favicon) 이미지 URL 자동 생성 함수 --- */
 const getFaviconUrl = (url) => {
   try {
-    // URL에서 도메인(hostname)만 추출 (예: https://www.google.com/search -> www.google.com)
     const domain = new URL(url).hostname;
-    // 구글 파비콘 API (sz=64는 64x64 픽셀의 선명한 화질을 의미함)
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
   } catch (error) {
-    return ''; // URL이 잘못된 경우 빈 문자열 반환
+    return DEFAULT_FAVICON; // 주소 형식이 아예 잘못된 경우 기본 아이콘 반환
   }
 };
 
@@ -121,9 +122,14 @@ function UserPage() {
                       📂 {res.tab.name}
                     </span><br/>
                     
-                    {/* ✨ 검색 결과 영역에 파비콘 추가 */}
                     <strong style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <img src={getFaviconUrl(res.link.url)} alt="" style={{ width: '18px', height: '18px', borderRadius: '3px', flexShrink: 0 }} />
+                      {/* ✨ onError 속성 추가: 이미지 로딩 실패 시 기본 아이콘으로 대체 */}
+                      <img 
+                        src={getFaviconUrl(res.link.url)} 
+                        onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_FAVICON; }}
+                        alt="" 
+                        style={{ width: '18px', height: '18px', borderRadius: '3px', flexShrink: 0 }} 
+                      />
                       <HighlightText text={res.link.title} highlight={searchQuery} />
                     </strong>
                     
@@ -175,11 +181,12 @@ function UserPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="link-item"
-                    // ✨ 일반 링크 목록 영역에도 flex 속성을 주어 파비콘과 텍스트를 나란히 배치
                     style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
                   >
+                    {/* ✨ onError 속성 추가: 이미지 로딩 실패 시 기본 아이콘으로 대체 */}
                     <img 
                       src={getFaviconUrl(link.url)} 
+                      onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_FAVICON; }}
                       alt="" 
                       style={{ width: '24px', height: '24px', borderRadius: '4px', flexShrink: 0 }} 
                     />
