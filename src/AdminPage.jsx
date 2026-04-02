@@ -7,6 +7,24 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+/* --- 🌐 URL 검증 및 자동 포맷팅 함수 --- */
+const formatAndValidateUrl = (url) => {
+  let formattedUrl = url.trim();
+  
+  // 1. http:// 또는 https:// 로 시작하지 않으면 https:// 를 자동으로 붙임
+  if (!/^https?:\/\//i.test(formattedUrl)) {
+    formattedUrl = `https://${formattedUrl}`;
+  }
+  
+  // 2. 내장된 URL 객체를 활용해 실제 유효한 주소인지 검증
+  try {
+    new URL(formattedUrl);
+    return formattedUrl; // 유효하면 포맷팅된 URL 반환
+  } catch (error) {
+    return null; // 유효하지 않으면 null 반환
+  }
+};
+
 /* --- 🔍 텍스트 하이라이트 컴포넌트 --- */
 function HighlightText({ text, highlight }) {
   if (!highlight.trim()) return <span>{text}</span>;
@@ -41,7 +59,7 @@ function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
 function SortableLinkItem({ id, link, idx, onEdit, onDelete, editingIndex, editTitle, setEditTitle, editUrl, setEditUrl, onSave, onCancel }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
-    transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '12px', gap: '10px'
+    transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', marginBottom: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '12px', gap: '10px'
   };
   return (
     <li ref={setNodeRef} style={style}>
@@ -78,7 +96,6 @@ function AdminPage() {
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState('');
   
-  // 팝업 관련 상태
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTabName, setNewTabName] = useState('');
 
@@ -107,12 +124,9 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
-  /* --- 🚀 탭 추가 로직 (중복 체크 포함) --- */
   const handleAddTab = async () => {
     const trimmedName = newTabName.trim();
     if (!trimmedName) return alert('탭 이름을 입력해주세요.');
-
-    // 🕵️ 중복 검사: 기존 탭 이름 중에 똑같은 게 있는지 확인
     const isDuplicate = tabs.some(tab => tab.name.toLowerCase() === trimmedName.toLowerCase());
     
     if (isDuplicate) {
@@ -121,14 +135,9 @@ function AdminPage() {
     }
 
     try {
-      await addDoc(collection(db, 'tabs'), { 
-        name: trimmedName, 
-        links: [], 
-        order: tabs.length, 
-        createdAt: serverTimestamp() 
-      });
+      await addDoc(collection(db, 'tabs'), { name: trimmedName, links: [], order: tabs.length, createdAt: serverTimestamp() });
       setNewTabName('');
-      setIsModalOpen(false); // 성공 시 팝업 닫기
+      setIsModalOpen(false);
     } catch (error) { alert('탭 추가 오류'); }
   };
 
@@ -153,10 +162,18 @@ function AdminPage() {
     await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
   };
 
+  /* --- 🚀 링크 추가 로직 (URL 검증 포함) --- */
   const handleAddLink = async () => {
     if (!newLinkTitle || !newLinkUrl) return;
+
+    const validatedUrl = formatAndValidateUrl(newLinkUrl);
+    if (!validatedUrl) {
+      alert('올바른 웹사이트 주소를 입력해주세요!\n(예: google.com 또는 https://google.com)');
+      return;
+    }
+
     const currentTab = tabs.find(t => t.id === activeTabId);
-    await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: newLinkUrl }] });
+    await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
     setNewLinkTitle(''); setNewLinkUrl('');
   };
 
@@ -233,45 +250,30 @@ function AdminPage() {
                 <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
                   <ul style={{ listStyle: 'none', padding: 0 }}>
                     {activeTab.links?.map((link, idx) => (
-                      <SortableLinkItem key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx} editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl} onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }} onDelete={async (l) => { if(confirm('삭제?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }} onSave={async () => { const newLinks = [...activeTab.links]; newLinks[idx] = { title: editLinkTitle, url: editLinkUrl }; await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks }); setEditingLinkIndex(null); }} onCancel={() => setEditingLinkIndex(null)} />
+                      <SortableLinkItem 
+                        key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx} 
+                        editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl} 
+                        onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }} 
+                        onDelete={async (l) => { if(confirm('삭제?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }} 
+                        /* --- 🚀 링크 수정 로직 (URL 검증 포함) --- */
+                        onSave={async () => { 
+                          const validatedUrl = formatAndValidateUrl(editLinkUrl);
+                          if (!validatedUrl) {
+                            alert('올바른 웹사이트 주소를 입력해주세요!');
+                            return;
+                          }
+                          const newLinks = [...activeTab.links]; 
+                          newLinks[idx] = { title: editLinkTitle, url: validatedUrl }; 
+                          await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks }); 
+                          setEditingLinkIndex(null); 
+                        }} 
+                        onCancel={() => setEditingLinkIndex(null)} 
+                      />
                     ))}
                   </ul>
                 </SortableContext>
               </DndContext>
 
               <div style={{ display: 'flex', gap: '5px', marginTop: '20px', background: '#eee', padding: '15px', borderRadius: '8px', flexWrap: 'wrap' }}>
-                <input type="text" placeholder="제목" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px' }} />
-                <input type="text" placeholder="URL" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px' }} />
-                <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px' }}>추가</button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* 📥 탭 추가 모달 (팝업) */}
-      {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>새 탭 만들기</h3>
-            <p style={{ fontSize: '13px', color: 'gray' }}>중복되지 않는 이름을 입력해주세요.</p>
-            <input 
-              type="text" 
-              placeholder="탭 이름 입력" 
-              value={newTabName} 
-              onChange={e => setNewTabName(e.target.value)}
-              autoFocus
-              onKeyDown={(e) => { if(e.key === 'Enter') handleAddTab(); }}
-            />
-            <div className="modal-btns">
-              <button onClick={() => { setIsModalOpen(false); setNewTabName(''); }} className="btn-cancel">취소</button>
-              <button onClick={handleAddTab} className="btn-confirm">추가하기</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default AdminPage;
+                <input type="text" placeholder="제목" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px', minWidth: '100px' }} />
+                <input type="text" placeholder="URL (google.com만 쳐도 됨)" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px', minWidth: '150px' }}
