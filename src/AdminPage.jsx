@@ -3,15 +3,37 @@ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, onSnapshot, query, orderBy, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
 
-// DND 관련 컴포넌트들
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-/* --- 1. 드래그 가능한 탭 아이템 컴포넌트 --- */
+/* --- 🔍 텍스트 하이라이트 컴포넌트 --- */
+function HighlightText({ text, highlight }) {
+  if (!highlight.trim()) return <span>{text}</span>;
+  
+  // 정규식 특수문자 에러 방지 (QA 필수 처리)
+  const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapeRegExp(highlight)})`, 'gi');
+  const parts = text.split(regex);
+
+  return (
+    <span>
+      {parts.map((part, i) => 
+        regex.test(part) ? (
+          <span key={i} style={{ backgroundColor: '#ffeb3b', color: '#000', fontWeight: 'bold', padding: '0 2px', borderRadius: '3px' }}>
+            {part}
+          </span>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
+  );
+}
+
+/* --- 드래그 가능한 탭 아이템 --- */
 function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -26,7 +48,6 @@ function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
     whiteSpace: 'nowrap',
     userSelect: 'none'
   };
-
   return (
     <div ref={setNodeRef} style={style} onClick={() => setActiveTabId(tab.id)} {...attributes} {...listeners}>
       ☰ {tab.name}
@@ -34,24 +55,12 @@ function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
   );
 }
 
-/* --- 2. 드래그 가능한 링크 아이템 컴포넌트 --- */
+/* --- 드래그 가능한 링크 아이템 --- */
 function SortableLinkItem({ id, link, idx, onEdit, onDelete, editingIndex, editTitle, setEditTitle, editUrl, setEditUrl, onSave, onCancel }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    backgroundColor: '#fff',
-    border: '1px solid #eee',
-    marginBottom: '8px',
-    borderRadius: '4px',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '12px',
-    gap: '10px'
+    transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '12px', gap: '10px'
   };
-
   return (
     <li ref={setNodeRef} style={style}>
       <div {...attributes} {...listeners} style={{ cursor: 'grab', color: '#ccc' }}>⠿</div>
@@ -93,6 +102,9 @@ function AdminPage() {
   const [editLinkTitle, setEditLinkTitle] = useState('');
   const [editLinkUrl, setEditLinkUrl] = useState('');
 
+  // 🔍 검색 상태 관리
+  const [searchQuery, setSearchQuery] = useState('');
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -111,38 +123,29 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
-  /* --- 탭 순서 변경 처리 --- */
   const handleTabDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-
     const oldIndex = tabs.findIndex(t => t.id === active.id);
     const newIndex = tabs.findIndex(t => t.id === over.id);
     const newTabs = arrayMove(tabs, oldIndex, newIndex);
-
-    // DB에 일괄 업데이트 (Batch)
     const batch = writeBatch(db);
     newTabs.forEach((tab, index) => {
-      const tabRef = doc(db, 'tabs', tab.id);
-      batch.update(tabRef, { order: index });
+      batch.update(doc(db, 'tabs', tab.id), { order: index });
     });
     await batch.commit();
   };
 
-  /* --- 링크 순서 변경 처리 --- */
   const handleLinkDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-
     const currentTab = tabs.find(t => t.id === activeTabId);
     const oldIndex = parseInt(active.id.split('-')[1]);
     const newIndex = parseInt(over.id.split('-')[1]);
     const newLinks = arrayMove(currentTab.links, oldIndex, newIndex);
-
     await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
   };
 
-  /* --- 기타 관리 함수들 --- */
   const handleAddTab = async () => {
     if (!newTabName.trim()) return;
     await addDoc(collection(db, 'tabs'), { name: newTabName, links: [], order: tabs.length, createdAt: serverTimestamp() });
@@ -155,6 +158,16 @@ function AdminPage() {
     await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: newLinkUrl }] });
     setNewLinkTitle(''); setNewLinkUrl('');
   };
+
+  // 🔍 검색 로직 (탭 이름, 링크 제목, 링크 URL 모두 검색)
+  const searchResults = tabs.flatMap(tab => 
+    (tab.links || [])
+      .map((link, index) => ({ tab, link, index }))
+      .filter(({ link }) => 
+        link.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        link.url.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+  );
 
   if (!isLoggedIn) {
     return (
@@ -174,58 +187,107 @@ function AdminPage() {
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0 }}>⚙️ 전체 관리 (탭/링크 드래그 가능)</h2>
+        <h2 style={{ margin: 0 }}>⚙️ 전체 관리 (검색 & 정렬)</h2>
         <button onClick={() => signOut(auth)}>로그아웃</button>
       </div>
 
-      <div style={{ display: 'flex', gap: '5px', marginBottom: '20px' }}>
-        <input type="text" placeholder="새 탭 이름" value={newTabName} onChange={e => setNewTabName(e.target.value)} style={{ flex: 1, padding: '10px' }} />
-        <button onClick={handleAddTab} style={{ padding: '10px 20px' }}>탭 추가</button>
+      {/* 🔍 링크 통합 검색창 */}
+      <div style={{ marginBottom: '20px' }}>
+        <input 
+          type="text" 
+          placeholder="🔍 찾고 싶은 링크 제목이나 주소를 검색하세요..." 
+          value={searchQuery} 
+          onChange={e => setSearchQuery(e.target.value)} 
+          style={{ width: '100%', padding: '12px', fontSize: '16px', borderRadius: '8px', border: '2px solid #1a73e8', boxSizing: 'border-box' }} 
+        />
       </div>
 
-      {/* --- 탭 드래그 영역 --- */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
-        <SortableContext items={tabs.map(t => t.id)} strategy={horizontalListSortingStrategy}>
-          <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '2px solid #eee', marginBottom: '20px' }}>
-            {tabs.map(tab => (
-              <SortableTabItem key={tab.id} id={tab.id} tab={tab} activeTabId={activeTabId} setActiveTabId={setActiveTabId} />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
-
-      {/* --- 링크 드래그 영역 --- */}
-      {activeTab && (
-        <div style={{ background: '#fcfcfc', padding: '20px', borderRadius: '10px', border: '1px solid #eee' }}>
-          <h3>📂 {activeTab.name} 관리</h3>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLinkDragEnd}>
-            <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {activeTab.links?.map((link, idx) => (
-                  <SortableLinkItem 
-                    key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx}
-                    editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl}
-                    onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }}
-                    onDelete={async (l) => { if(confirm('삭제?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }}
-                    onSave={async () => {
-                      const newLinks = [...activeTab.links];
-                      newLinks[idx] = { title: editLinkTitle, url: editLinkUrl };
-                      await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
-                      setEditingLinkIndex(null);
+      {/* 검색어가 있을 때: 검색 결과 화면 렌더링 */}
+      {searchQuery.trim() !== '' ? (
+        <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '10px', border: '1px solid #ddd' }}>
+          <h3 style={{ marginTop: 0 }}>🔎 검색 결과 ({searchResults.length}건)</h3>
+          {searchResults.length === 0 ? (
+            <p style={{ color: 'gray' }}>일치하는 링크가 없습니다.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              {searchResults.map((res, i) => (
+                <li key={i} style={{ backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '10px', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ wordBreak: 'break-all' }}>
+                    <span style={{ display: 'inline-block', backgroundColor: '#e8f0fe', color: '#1a73e8', fontSize: '12px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px', marginBottom: '8px' }}>
+                      📂 {res.tab.name}
+                    </span><br/>
+                    <strong style={{ fontSize: '16px' }}>
+                      <HighlightText text={res.link.title} highlight={searchQuery} />
+                    </strong><br/>
+                    <span style={{ color: 'gray', fontSize: '13px' }}>
+                      <HighlightText text={res.link.url} highlight={searchQuery} />
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setActiveTabId(res.tab.id); // 해당 탭으로 이동
+                      setSearchQuery(''); // 검색창 초기화하여 원래 화면으로 복귀
                     }}
-                    onCancel={() => setEditingLinkIndex(null)}
-                  />
+                    style={{ background: '#333', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    이 탭으로 이동 ➡️
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        /* 검색어가 없을 때: 기존 드래그 앤 드롭 화면 렌더링 */
+        <>
+          <div style={{ display: 'flex', gap: '5px', marginBottom: '20px' }}>
+            <input type="text" placeholder="새 탭 이름" value={newTabName} onChange={e => setNewTabName(e.target.value)} style={{ flex: 1, padding: '10px' }} />
+            <button onClick={handleAddTab} style={{ padding: '10px 20px' }}>탭 추가</button>
+          </div>
+
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
+            <SortableContext items={tabs.map(t => t.id)} strategy={horizontalListSortingStrategy}>
+              <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '2px solid #eee', marginBottom: '20px' }}>
+                {tabs.map(tab => (
+                  <SortableTabItem key={tab.id} id={tab.id} tab={tab} activeTabId={activeTabId} setActiveTabId={setActiveTabId} />
                 ))}
-              </ul>
+              </div>
             </SortableContext>
           </DndContext>
 
-          <div style={{ display: 'flex', gap: '5px', marginTop: '20px', background: '#eee', padding: '15px', borderRadius: '8px' }}>
-            <input type="text" placeholder="링크명" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px' }} />
-            <input type="text" placeholder="URL" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px' }} />
-            <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px' }}>추가</button>
-          </div>
-        </div>
+          {activeTab && (
+            <div style={{ background: '#fcfcfc', padding: '20px', borderRadius: '10px', border: '1px solid #eee' }}>
+              <h3>📂 {activeTab.name} 관리</h3>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLinkDragEnd}>
+                <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
+                  <ul style={{ listStyle: 'none', padding: 0 }}>
+                    {activeTab.links?.map((link, idx) => (
+                      <SortableLinkItem 
+                        key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx}
+                        editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl}
+                        onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }}
+                        onDelete={async (l) => { if(window.confirm('삭제하시겠습니까?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }}
+                        onSave={async () => {
+                          const newLinks = [...activeTab.links];
+                          newLinks[idx] = { title: editLinkTitle, url: editLinkUrl };
+                          await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
+                          setEditingLinkIndex(null);
+                        }}
+                        onCancel={() => setEditingLinkIndex(null)}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+
+              <div style={{ display: 'flex', gap: '5px', marginTop: '20px', background: '#eee', padding: '15px', borderRadius: '8px', flexWrap: 'wrap' }}>
+                <input type="text" placeholder="링크명" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px', minWidth: '100px' }} />
+                <input type="text" placeholder="URL" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px', minWidth: '150px' }} />
+                <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px', whiteSpace: 'nowrap' }}>추가</button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
