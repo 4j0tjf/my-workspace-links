@@ -7,7 +7,6 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// 🍞 토스트 알림 라이브러리 불러오기
 import toast, { Toaster } from 'react-hot-toast';
 
 /* --- 🌐 URL 검증 함수 --- */
@@ -117,33 +116,64 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
-  /* --- 🚀 이벤트 로직 (토스트 적용) --- */
+  /* --- 💾 데이터 백업 함수 --- */
+  const handleExportData = () => {
+    if (tabs.length === 0) {
+      toast.error('백업할 데이터가 없습니다.');
+      return;
+    }
+
+    try {
+      // 1. 탭 데이터를 예쁘게 정렬된 JSON 문자열로 변환
+      const jsonString = JSON.stringify(tabs, null, 2);
+      
+      // 2. Blob 객체를 생성하여 데이터를 파일 형태로 만듦
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // 3. 임시 <a> 태그를 만들어 다운로드 실행
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // 파일명에 오늘 날짜 자동 삽입 (예: workspace_backup_2026-04-02.json)
+      const today = new Date().toISOString().slice(0, 10);
+      link.download = `workspace_backup_${today}.json`;
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // 4. 메모리 정리
+      URL.revokeObjectURL(url);
+      
+      toast.success('데이터가 성공적으로 백업되었습니다! 💾');
+    } catch (error) {
+      toast.error('백업 중 오류가 발생했습니다.');
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
       setIsLoggedIn(true);
-      toast.success('관리자로 로그인되었습니다!'); // ✨ 성공 토스트
+      toast.success('관리자로 로그인되었습니다!');
     } catch(err) {
-      toast.error('로그인 실패: 이메일과 비밀번호를 확인해주세요.'); // ✨ 에러 토스트
+      toast.error('로그인 실패: 이메일과 비밀번호를 확인해주세요.');
     }
   };
 
   const handleLogout = () => {
     signOut(auth);
     setIsLoggedIn(false);
-    toast('로그아웃 되었습니다.', { icon: '👋' }); // ✨ 일반 토스트
+    toast('로그아웃 되었습니다.', { icon: '👋' });
   };
 
   const handleAddTab = async () => {
     const trimmedName = newTabName.trim();
     if (!trimmedName) return toast.error('탭 이름을 입력해주세요.');
     const isDuplicate = tabs.some(tab => tab.name.toLowerCase() === trimmedName.toLowerCase());
-    
-    if (isDuplicate) {
-      toast.error(`'${trimmedName}'은(는) 이미 존재하는 탭입니다.`);
-      return;
-    }
+    if (isDuplicate) return toast.error(`'${trimmedName}'은(는) 이미 존재하는 탭입니다.`);
 
     try {
       await addDoc(collection(db, 'tabs'), { name: trimmedName, links: [], order: tabs.length, createdAt: serverTimestamp() });
@@ -155,12 +185,8 @@ function AdminPage() {
 
   const handleAddLink = async () => {
     if (!newLinkTitle || !newLinkUrl) return toast.error('제목과 URL을 모두 입력해주세요.');
-
     const validatedUrl = formatAndValidateUrl(newLinkUrl);
-    if (!validatedUrl) {
-      toast.error('올바른 웹사이트 주소 형식이 아닙니다.');
-      return;
-    }
+    if (!validatedUrl) return toast.error('올바른 웹사이트 주소 형식이 아닙니다.');
 
     const currentTab = tabs.find(t => t.id === activeTabId);
     await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
@@ -197,7 +223,7 @@ function AdminPage() {
   if (!isLoggedIn) {
     return (
       <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>
-        <Toaster position="top-center" /> {/* 🍞 로그인 화면용 토스트 */}
+        <Toaster position="top-center" />
         <h2>로그인</h2>
         <form onSubmit={handleLogin} style={{ display: 'inline-flex', flexDirection: 'column', gap: '10px' }}>
           <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: '10px' }} />
@@ -212,7 +238,7 @@ function AdminPage() {
 
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif' }}>
-      <Toaster position="bottom-center" /> {/* 🍞 어드민 화면용 토스트 설정 (위치 하단 중앙) */}
+      <Toaster position="bottom-center" />
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ margin: 0 }}>⚙️ 어드민 도구</h2>
@@ -241,12 +267,21 @@ function AdminPage() {
         </div>
       ) : (
         <>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            style={{ width: '100%', padding: '12px', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', marginBottom: '20px', fontWeight: 'bold' }}
-          >
-            + 새 탭 만들기
-          </button>
+          {/* ✨ 새 탭 버튼과 백업 버튼을 나란히 배치 */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              style={{ flex: 1, padding: '12px', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              + 새 탭 만들기
+            </button>
+            <button 
+              onClick={handleExportData}
+              style={{ flex: 1, padding: '12px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+            >
+              💾 데이터 백업 (.json)
+            </button>
+          </div>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
             <SortableContext items={tabs.map(t => t.id)} strategy={horizontalListSortingStrategy}>
@@ -270,7 +305,7 @@ function AdminPage() {
                         editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl} 
                         onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }} 
                         onDelete={async (l) => { 
-                          if(confirm('삭제하시겠습니까?')) {
+                          if(window.confirm('삭제하시겠습니까?')) {
                             await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); 
                             toast.success('삭제되었습니다.');
                           }
