@@ -10,23 +10,14 @@ import { CSS } from '@dnd-kit/utilities';
 /* --- 🔍 텍스트 하이라이트 컴포넌트 --- */
 function HighlightText({ text, highlight }) {
   if (!highlight.trim()) return <span>{text}</span>;
-  
-  // 정규식 특수문자 에러 방지 (QA 필수 처리)
   const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escapeRegExp(highlight)})`, 'gi');
   const parts = text.split(regex);
-
   return (
     <span>
-      {parts.map((part, i) => 
-        regex.test(part) ? (
-          <span key={i} style={{ backgroundColor: '#ffeb3b', color: '#000', fontWeight: 'bold', padding: '0 2px', borderRadius: '3px' }}>
-            {part}
-          </span>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
+      {parts.map((part, i) => regex.test(part) ? (
+        <span key={i} style={{ backgroundColor: '#ffeb3b', color: '#000', fontWeight: 'bold', padding: '0 2px', borderRadius: '3px' }}>{part}</span>
+      ) : <span key={i}>{part}</span>)}
     </span>
   );
 }
@@ -35,18 +26,9 @@ function HighlightText({ text, highlight }) {
 function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-    padding: '10px 20px',
-    cursor: 'pointer',
-    fontWeight: activeTabId === tab.id ? 'bold' : 'normal',
-    color: activeTabId === tab.id ? '#d32f2f' : '#5f6368',
-    borderBottom: activeTabId === tab.id ? '3px solid #d32f2f' : '3px solid transparent',
-    backgroundColor: isDragging ? '#f0f0f0' : 'transparent',
-    zIndex: isDragging ? 100 : 'auto',
-    whiteSpace: 'nowrap',
-    userSelect: 'none'
+    transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1, padding: '10px 20px', cursor: 'pointer',
+    fontWeight: activeTabId === tab.id ? 'bold' : 'normal', color: activeTabId === tab.id ? '#d32f2f' : '#5f6368',
+    borderBottom: activeTabId === tab.id ? '3px solid #d32f2f' : '3px solid transparent', whiteSpace: 'nowrap', userSelect: 'none'
   };
   return (
     <div ref={setNodeRef} style={style} onClick={() => setActiveTabId(tab.id)} {...attributes} {...listeners}>
@@ -95,14 +77,16 @@ function AdminPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState('');
+  
+  // 팝업 관련 상태
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTabName, setNewTabName] = useState('');
+
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const [editingLinkIndex, setEditingLinkIndex] = useState(null);
   const [editLinkTitle, setEditLinkTitle] = useState('');
   const [editLinkUrl, setEditLinkUrl] = useState('');
-
-  // 🔍 검색 상태 관리
   const [searchQuery, setSearchQuery] = useState('');
 
   const sensors = useSensors(
@@ -123,6 +107,31 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
+  /* --- 🚀 탭 추가 로직 (중복 체크 포함) --- */
+  const handleAddTab = async () => {
+    const trimmedName = newTabName.trim();
+    if (!trimmedName) return alert('탭 이름을 입력해주세요.');
+
+    // 🕵️ 중복 검사: 기존 탭 이름 중에 똑같은 게 있는지 확인
+    const isDuplicate = tabs.some(tab => tab.name.toLowerCase() === trimmedName.toLowerCase());
+    
+    if (isDuplicate) {
+      alert(`'${trimmedName}'은(는) 이미 존재하는 탭 이름입니다. 다른 이름을 사용해주세요.`);
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'tabs'), { 
+        name: trimmedName, 
+        links: [], 
+        order: tabs.length, 
+        createdAt: serverTimestamp() 
+      });
+      setNewTabName('');
+      setIsModalOpen(false); // 성공 시 팝업 닫기
+    } catch (error) { alert('탭 추가 오류'); }
+  };
+
   const handleTabDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -130,9 +139,7 @@ function AdminPage() {
     const newIndex = tabs.findIndex(t => t.id === over.id);
     const newTabs = arrayMove(tabs, oldIndex, newIndex);
     const batch = writeBatch(db);
-    newTabs.forEach((tab, index) => {
-      batch.update(doc(db, 'tabs', tab.id), { order: index });
-    });
+    newTabs.forEach((tab, index) => { batch.update(doc(db, 'tabs', tab.id), { order: index }); });
     await batch.commit();
   };
 
@@ -146,12 +153,6 @@ function AdminPage() {
     await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
   };
 
-  const handleAddTab = async () => {
-    if (!newTabName.trim()) return;
-    await addDoc(collection(db, 'tabs'), { name: newTabName, links: [], order: tabs.length, createdAt: serverTimestamp() });
-    setNewTabName('');
-  };
-
   const handleAddLink = async () => {
     if (!newLinkTitle || !newLinkUrl) return;
     const currentTab = tabs.find(t => t.id === activeTabId);
@@ -159,24 +160,19 @@ function AdminPage() {
     setNewLinkTitle(''); setNewLinkUrl('');
   };
 
-  // 🔍 검색 로직 (탭 이름, 링크 제목, 링크 URL 모두 검색)
   const searchResults = tabs.flatMap(tab => 
-    (tab.links || [])
-      .map((link, index) => ({ tab, link, index }))
-      .filter(({ link }) => 
-        link.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        link.url.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    (tab.links || []).map((link, index) => ({ tab, link, index }))
+      .filter(({ link }) => link.title.toLowerCase().includes(searchQuery.toLowerCase()) || link.url.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   if (!isLoggedIn) {
     return (
       <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>
         <h2>로그인</h2>
-        <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); setIsLoggedIn(true); } catch(err) { alert('로그인 실패'); } }}>
-          <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: '10px', marginBottom: '5px' }} /><br/>
-          <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} style={{ padding: '10px', marginBottom: '10px' }} /><br/>
-          <button type="submit" style={{ padding: '10px 20px', background: '#d32f2f', color: 'white', border: 'none' }}>로그인</button>
+        <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); setIsLoggedIn(true); } catch(err) { alert('실패'); } }} style={{ display: 'inline-flex', flexDirection: 'column', gap: '10px' }}>
+          <input type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: '10px' }} />
+          <input type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} style={{ padding: '10px' }} />
+          <button type="submit" style={{ padding: '10px', background: '#d32f2f', color: 'white', border: 'none' }}>로그인</button>
         </form>
       </div>
     );
@@ -187,63 +183,38 @@ function AdminPage() {
   return (
     <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0 }}>⚙️ 전체 관리 (검색 & 정렬)</h2>
+        <h2 style={{ margin: 0 }}>⚙️ 어드민 도구</h2>
         <button onClick={() => signOut(auth)}>로그아웃</button>
       </div>
 
-      {/* 🔍 링크 통합 검색창 */}
       <div style={{ marginBottom: '20px' }}>
-        <input 
-          type="text" 
-          placeholder="🔍 찾고 싶은 링크 제목이나 주소를 검색하세요..." 
-          value={searchQuery} 
-          onChange={e => setSearchQuery(e.target.value)} 
-          style={{ width: '100%', padding: '12px', fontSize: '16px', borderRadius: '8px', border: '2px solid #1a73e8', boxSizing: 'border-box' }} 
-        />
+        <input type="text" placeholder="🔍 링크 검색..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '2px solid #1a73e8', boxSizing: 'border-box' }} />
       </div>
 
-      {/* 검색어가 있을 때: 검색 결과 화면 렌더링 */}
       {searchQuery.trim() !== '' ? (
         <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '10px', border: '1px solid #ddd' }}>
-          <h3 style={{ marginTop: 0 }}>🔎 검색 결과 ({searchResults.length}건)</h3>
-          {searchResults.length === 0 ? (
-            <p style={{ color: 'gray' }}>일치하는 링크가 없습니다.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {searchResults.map((res, i) => (
-                <li key={i} style={{ backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '10px', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                  <div style={{ wordBreak: 'break-all' }}>
-                    <span style={{ display: 'inline-block', backgroundColor: '#e8f0fe', color: '#1a73e8', fontSize: '12px', fontWeight: 'bold', padding: '3px 8px', borderRadius: '4px', marginBottom: '8px' }}>
-                      📂 {res.tab.name}
-                    </span><br/>
-                    <strong style={{ fontSize: '16px' }}>
-                      <HighlightText text={res.link.title} highlight={searchQuery} />
-                    </strong><br/>
-                    <span style={{ color: 'gray', fontSize: '13px' }}>
-                      <HighlightText text={res.link.url} highlight={searchQuery} />
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setActiveTabId(res.tab.id); // 해당 탭으로 이동
-                      setSearchQuery(''); // 검색창 초기화하여 원래 화면으로 복귀
-                    }}
-                    style={{ background: '#333', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    이 탭으로 이동 ➡️
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <h3 style={{ marginTop: 0 }}>🔎 검색 결과 ({searchResults.length})</h3>
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            {searchResults.map((res, i) => (
+              <li key={i} style={{ backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '10px', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ wordBreak: 'break-all' }}>
+                   <span style={{ fontSize: '11px', color: '#1a73e8', fontWeight: 'bold' }}>📂 {res.tab.name}</span><br/>
+                   <HighlightText text={res.link.title} highlight={searchQuery} /><br/>
+                   <small style={{ color: 'gray' }}><HighlightText text={res.link.url} highlight={searchQuery} /></small>
+                </div>
+                <button onClick={() => { setActiveTabId(res.tab.id); setSearchQuery(''); }} style={{ background: '#333', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px' }}>이동</button>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : (
-        /* 검색어가 없을 때: 기존 드래그 앤 드롭 화면 렌더링 */
         <>
-          <div style={{ display: 'flex', gap: '5px', marginBottom: '20px' }}>
-            <input type="text" placeholder="새 탭 이름" value={newTabName} onChange={e => setNewTabName(e.target.value)} style={{ flex: 1, padding: '10px' }} />
-            <button onClick={handleAddTab} style={{ padding: '10px 20px' }}>탭 추가</button>
-          </div>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            style={{ width: '100%', padding: '12px', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', marginBottom: '20px', fontWeight: 'bold' }}
+          >
+            + 새 탭 만들기
+          </button>
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
             <SortableContext items={tabs.map(t => t.id)} strategy={horizontalListSortingStrategy}>
@@ -262,32 +233,42 @@ function AdminPage() {
                 <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
                   <ul style={{ listStyle: 'none', padding: 0 }}>
                     {activeTab.links?.map((link, idx) => (
-                      <SortableLinkItem 
-                        key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx}
-                        editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl}
-                        onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }}
-                        onDelete={async (l) => { if(window.confirm('삭제하시겠습니까?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }}
-                        onSave={async () => {
-                          const newLinks = [...activeTab.links];
-                          newLinks[idx] = { title: editLinkTitle, url: editLinkUrl };
-                          await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
-                          setEditingLinkIndex(null);
-                        }}
-                        onCancel={() => setEditingLinkIndex(null)}
-                      />
+                      <SortableLinkItem key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx} editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl} onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }} onDelete={async (l) => { if(confirm('삭제?')) await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); }} onSave={async () => { const newLinks = [...activeTab.links]; newLinks[idx] = { title: editLinkTitle, url: editLinkUrl }; await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks }); setEditingLinkIndex(null); }} onCancel={() => setEditingLinkIndex(null)} />
                     ))}
                   </ul>
                 </SortableContext>
               </DndContext>
 
               <div style={{ display: 'flex', gap: '5px', marginTop: '20px', background: '#eee', padding: '15px', borderRadius: '8px', flexWrap: 'wrap' }}>
-                <input type="text" placeholder="링크명" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px', minWidth: '100px' }} />
-                <input type="text" placeholder="URL" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px', minWidth: '150px' }} />
-                <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px', whiteSpace: 'nowrap' }}>추가</button>
+                <input type="text" placeholder="제목" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px' }} />
+                <input type="text" placeholder="URL" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px' }} />
+                <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px' }}>추가</button>
               </div>
             </div>
           )}
         </>
+      )}
+
+      {/* 📥 탭 추가 모달 (팝업) */}
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>새 탭 만들기</h3>
+            <p style={{ fontSize: '13px', color: 'gray' }}>중복되지 않는 이름을 입력해주세요.</p>
+            <input 
+              type="text" 
+              placeholder="탭 이름 입력" 
+              value={newTabName} 
+              onChange={e => setNewTabName(e.target.value)}
+              autoFocus
+              onKeyDown={(e) => { if(e.key === 'Enter') handleAddTab(); }}
+            />
+            <div className="modal-btns">
+              <button onClick={() => { setIsModalOpen(false); setNewTabName(''); }} className="btn-cancel">취소</button>
+              <button onClick={handleAddTab} className="btn-confirm">추가하기</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
