@@ -276,4 +276,32 @@ function AdminPage() {
 
               <div style={{ display: 'flex', gap: '5px', marginTop: '20px', background: '#eee', padding: '15px', borderRadius: '8px', flexWrap: 'wrap' }}>
                 <input type="text" placeholder="제목" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px', minWidth: '100px' }} />
-                <input type="text" placeholder="URL (google.com만 쳐도 됨)" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px', minWidth: '150px' }}
+                <input type="text" placeholder="URL (google.com만 쳐도 됨)" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px', minWidth: '150px' }} />
+                <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px', whiteSpace: 'nowrap' }}>추가</button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {isModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>새 탭 만들기</h3>
+            <p style={{ fontSize: '13px', color: 'gray' }}>중복되지 않는 이름을 입력해주세요.</p>
+            <input 
+              type="text" placeholder="탭 이름 입력" value={newTabName} 
+              onChange={e => setNewTabName(e.target.value)} autoFocus onKeyDown={(e) => { if(e.key === 'Enter') handleAddTab(); }}
+            />
+            <div className="modal-btns">
+              <button onClick={() => { setIsModalOpen(false); setNewTabName(''); }} className="btn-cancel">취소</button>
+              <button onClick={handleAddTab} className="btn-confirm">추가하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default AdminPage;
