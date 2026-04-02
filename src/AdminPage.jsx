@@ -1,38 +1,88 @@
 import { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, addDoc, doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, serverTimestamp, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, onSnapshot, query, orderBy, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
+
+// DND 관련 컴포넌트들
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+/* --- 드래그 가능한 아이템 컴포넌트 (링크용) --- */
+function SortableLinkItem({ id, link, idx, onEdit, onDelete, editingIndex, editTitle, setEditTitle, editUrl, setEditUrl, onSave, onCancel }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: '#fff',
+    border: '1px solid #eee',
+    marginBottom: '8px',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '12px',
+    gap: '10px',
+    zIndex: isDragging ? 100 : 'auto'
+  };
+
+  return (
+    <li ref={setNodeRef} style={style}>
+      {/* ✋ 핸들러: 여기를 잡고 끌어야 함 */}
+      <div {...attributes} {...listeners} style={{ cursor: 'grab', color: '#ccc', fontSize: '20px' }}>⠿</div>
+      
+      <div style={{ flex: 1 }}>
+        {editingIndex === idx ? (
+          <div style={{ display: 'flex', gap: '5px', width: '100%', flexWrap: 'wrap' }}>
+            <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} style={{ flex: 1, padding: '5px' }} />
+            <input type="text" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} style={{ flex: 2, padding: '5px' }} />
+            <button onClick={onSave} style={{ padding: '5px 10px', background: '#1a73e8', color: 'white', border: 'none' }}>저장</button>
+            <button onClick={onCancel} style={{ padding: '5px 10px' }}>취소</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div style={{ wordBreak: 'break-all' }}>
+              <strong>{link.title}</strong> <br/>
+              <span style={{ color: 'gray', fontSize: '12px' }}>{link.url}</span>
+            </div>
+            <div>
+              <button onClick={() => onEdit(idx, link)} style={{ marginRight: '5px', padding: '5px' }}>✏️</button>
+              <button onClick={() => onDelete(link)} style={{ padding: '5px' }}>🗑️</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
 
 function AdminPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-
   const [tabs, setTabs] = useState([]);
-  const [activeTabId, setActiveTabId] = useState(''); // 👈 유저 페이지처럼 현재 선택된 탭 관리
-
-  // 탭 관련 상태
+  const [activeTabId, setActiveTabId] = useState('');
   const [newTabName, setNewTabName] = useState('');
-  const [editingTabId, setEditingTabId] = useState(null);
-  const [editTabNameInput, setEditTabNameInput] = useState('');
-
-  // 링크 관련 상태 (한 번에 한 탭만 관리하므로 상태가 단순해집니다)
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
-  
   const [editingLinkIndex, setEditingLinkIndex] = useState(null);
   const [editLinkTitle, setEditLinkTitle] = useState('');
   const [editLinkUrl, setEditLinkUrl] = useState('');
 
-  // 데이터 불러오기 및 활성 탭 설정
+  // DND 센서 설정 (마우스, 터치, 키보드 지원)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   useEffect(() => {
     if (!isLoggedIn) return;
-    const q = query(collection(db, 'tabs'), orderBy('createdAt', 'asc'));
+    // 'order' 필드 기준으로 정렬해서 가져오기
+    const q = query(collection(db, 'tabs'), orderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const tabData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTabs(tabData);
-      
-      // 처음 로딩되거나, 현재 보고 있던 탭이 삭제된 경우 첫 번째 탭을 보여줌
       if (tabData.length > 0 && (!activeTabId || !tabData.find(t => t.id === activeTabId))) {
         setActiveTabId(tabData[0].id);
       }
@@ -40,182 +90,123 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
-  /* --- 인증 함수 --- */
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setIsLoggedIn(true);
-    } catch (error) { alert("로그인 실패: 아이디나 비밀번호를 확인해주세요."); }
-  };
-  const handleLogout = () => { signOut(auth); setIsLoggedIn(false); };
-
-  /* --- 탭(Tab) 관리 함수 --- */
+  /* --- 탭 및 링크 관리 로직 --- */
   const handleAddTab = async () => {
-    if (!newTabName.trim()) return alert('탭 이름을 입력해주세요.');
-    try {
-      const docRef = await addDoc(collection(db, 'tabs'), { name: newTabName, links: [], createdAt: serverTimestamp() });
-      setNewTabName('');
-      setActiveTabId(docRef.id); // 방금 새로 만든 탭으로 화면 즉시 이동
-    } catch (error) { alert('탭 추가 오류'); }
-  };
-
-  const handleDeleteTab = async (tabId) => {
-    if (window.confirm('이 탭과 안에 있는 모든 링크를 정말 삭제하시겠습니까?')) {
-      await deleteDoc(doc(db, 'tabs', tabId));
-      setEditingTabId(null);
-    }
-  };
-
-  const handleSaveEditTab = async (tabId) => {
-    if (!editTabNameInput.trim()) return alert('탭 이름을 입력해주세요.');
-    await updateDoc(doc(db, 'tabs', tabId), { name: editTabNameInput });
-    setEditingTabId(null);
-  };
-
-  /* --- 링크(Link) 관리 함수 --- */
-  const handleAddLink = async () => {
-    if (!newLinkTitle || !newLinkUrl) return alert('제목과 URL을 입력해주세요.');
-    await updateDoc(doc(db, 'tabs', activeTabId), { 
-      links: arrayUnion({ title: newLinkTitle, url: newLinkUrl }) 
+    if (!newTabName.trim()) return;
+    await addDoc(collection(db, 'tabs'), { 
+      name: newTabName, 
+      links: [], 
+      order: tabs.length, // 마지막 순서로 배치
+      createdAt: serverTimestamp() 
     });
-    setNewLinkTitle(''); // 입력창 초기화
-    setNewLinkUrl('');
+    setNewTabName('');
+  };
+
+  const handleAddLink = async () => {
+    if (!newLinkTitle || !newLinkUrl) return;
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    const updatedLinks = [...(activeTab.links || []), { title: newLinkTitle, url: newLinkUrl }];
+    await updateDoc(doc(db, 'tabs', activeTabId), { links: updatedLinks });
+    setNewLinkTitle(''); setNewLinkUrl('');
   };
 
   const handleDeleteLink = async (linkObj) => {
-    if (window.confirm(`'${linkObj.title}' 링크를 삭제하시겠습니까?`)) {
-      await updateDoc(doc(db, 'tabs', activeTabId), { links: arrayRemove(linkObj) });
-    }
-  };
-
-  const handleSaveEditLink = async () => {
-    if (!editLinkTitle || !editLinkUrl) return alert('제목과 URL을 입력해주세요.');
+    if (!window.confirm('삭제할까요?')) return;
     const activeTab = tabs.find(t => t.id === activeTabId);
-    const updatedLinks = [...activeTab.links];
-    updatedLinks[editingLinkIndex] = { title: editLinkTitle, url: editLinkUrl };
-    
+    const updatedLinks = activeTab.links.filter(l => l !== linkObj);
     await updateDoc(doc(db, 'tabs', activeTabId), { links: updatedLinks });
-    setEditingLinkIndex(null); // 수정 모드 종료
   };
 
-  /* --- 화면 렌더링 --- */
-  if (isLoggedIn) {
-    const activeTab = tabs.find(t => t.id === activeTabId); // 현재 선택된 탭의 데이터
+  /* --- 🚀 드래그 앤 드롭 종료 시 처리 (순서 저장) --- */
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    const oldIndex = activeTab.links.findIndex((_, idx) => `link-${idx}` === active.id);
+    const newIndex = activeTab.links.findIndex((_, idx) => `link-${idx}` === over.id);
+
+    // 1. 화면 상태를 먼저 업데이트 (즉각적인 반응)
+    const newLinks = arrayMove(activeTab.links, oldIndex, newIndex);
+    
+    // 2. 파이어베이스에 업데이트
+    await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
+  };
+
+  if (!isLoggedIn) {
     return (
-      <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif', boxSizing: 'border-box' }}>
-        {/* 상단 헤더 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <h2 style={{ color: '#d32f2f', margin: 0 }}>⚙️ 어드민: 업무 링크 관리</h2>
-          <button onClick={handleLogout} style={{ padding: '8px 16px', cursor: 'pointer' }}>로그아웃</button>
-        </div>
-        <hr style={{ margin: '20px 0' }} />
-
-        {/* 새 탭 추가 영역 */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-          <input type="text" placeholder="새 탭 이름 추가..." value={newTabName} onChange={(e) => setNewTabName(e.target.value)} style={{ flex: 1, padding: '10px', minWidth: '150px' }} />
-          <button onClick={handleAddTab} style={{ padding: '10px 20px', backgroundColor: '#333', color: 'white', border: 'none', cursor: 'pointer' }}>+ 탭 추가</button>
-        </div>
-
-        {/* 탭 메뉴 (유저 페이지처럼 가로로 배치) */}
-        <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '2px solid #e0e0e0', marginBottom: '20px', whiteSpace: 'nowrap' }}>
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              onClick={() => {
-                setActiveTabId(tab.id);
-                setEditingTabId(null);
-                setEditingLinkIndex(null);
-              }}
-              style={{
-                padding: '10px 20px',
-                cursor: 'pointer',
-                fontWeight: activeTabId === tab.id ? 'bold' : 'normal',
-                color: activeTabId === tab.id ? '#d32f2f' : '#5f6368',
-                borderBottom: activeTabId === tab.id ? '3px solid #d32f2f' : '3px solid transparent',
-                marginBottom: '-2px'
-              }}
-            >
-              {tab.name}
-            </div>
-          ))}
-        </div>
-
-        {/* 선택된 탭의 관리 영역 */}
-        {activeTab && (
-          <div style={{ padding: '20px', backgroundColor: '#fdfdfd', border: '1px solid #ddd', borderRadius: '8px' }}>
-            
-            {/* 활성 탭 이름 수정 및 삭제 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              {editingTabId === activeTab.id ? (
-                <div style={{ display: 'flex', gap: '5px', flex: 1 }}>
-                  <input type="text" value={editTabNameInput} onChange={(e) => setEditTabNameInput(e.target.value)} style={{ flex: 1, padding: '8px' }} />
-                  <button onClick={() => handleSaveEditTab(activeTab.id)} style={{ padding: '8px 15px', background: '#1a73e8', color: 'white', border: 'none' }}>저장</button>
-                  <button onClick={() => setEditingTabId(null)} style={{ padding: '8px 15px' }}>취소</button>
-                </div>
-              ) : (
-                <>
-                  <h3 style={{ margin: 0, color: '#333' }}>📂 {activeTab.name}</h3>
-                  <div>
-                    <button onClick={() => { setEditingTabId(activeTab.id); setEditTabNameInput(activeTab.name); }} style={{ marginRight: '5px', padding: '6px 12px', cursor: 'pointer' }}>탭 이름 수정</button>
-                    <button onClick={() => handleDeleteTab(activeTab.id)} style={{ padding: '6px 12px', color: 'white', background: '#d32f2f', border: 'none', cursor: 'pointer' }}>현재 탭 삭제</button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 링크 목록 */}
-            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px 0' }}>
-              {activeTab.links?.length === 0 && <p style={{ color: 'gray' }}>등록된 링크가 없습니다.</p>}
-              {activeTab.links?.map((link, idx) => (
-                <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '8px', borderRadius: '4px', flexWrap: 'wrap', gap: '10px' }}>
-                  
-                  {/* 링크 수정 모드 */}
-                  {editingLinkIndex === idx ? (
-                    <div style={{ display: 'flex', gap: '5px', width: '100%', flexWrap: 'wrap' }}>
-                      <input type="text" value={editLinkTitle} onChange={(e) => setEditLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px', minWidth: '100px' }} />
-                      <input type="text" value={editLinkUrl} onChange={(e) => setEditLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px', minWidth: '150px' }} />
-                      <button onClick={handleSaveEditLink} style={{ padding: '8px 15px', background: '#1a73e8', color: 'white', border: 'none' }}>저장</button>
-                      <button onClick={() => setEditingLinkIndex(null)} style={{ padding: '8px 15px' }}>취소</button>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ wordBreak: 'break-all' }}>
-                        <strong>{link.title}</strong> <br/>
-                        <span style={{ color: 'gray', fontSize: '13px' }}>{link.url}</span>
-                      </div>
-                      <div style={{ flexShrink: 0 }}>
-                        <button onClick={() => { setEditingLinkIndex(idx); setEditLinkTitle(link.title); setEditLinkUrl(link.url); }} style={{ marginRight: '5px', padding: '6px', cursor: 'pointer' }}>✏️ 수정</button>
-                        <button onClick={() => handleDeleteLink(link)} style={{ padding: '6px', cursor: 'pointer' }}>🗑️ 삭제</button>
-                      </div>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-
-            {/* 현재 탭에 새 링크 추가 폼 */}
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', backgroundColor: '#f1f3f4', padding: '15px', borderRadius: '8px' }}>
-              <input type="text" placeholder="새 링크 제목" value={newLinkTitle} onChange={(e) => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '10px', minWidth: '100px', border: '1px solid #ccc', borderRadius: '4px' }} />
-              <input type="text" placeholder="URL 주소 (https://...)" value={newLinkUrl} onChange={(e) => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '10px', minWidth: '150px', border: '1px solid #ccc', borderRadius: '4px' }} />
-              <button onClick={handleAddLink} style={{ padding: '10px 20px', backgroundColor: '#1a73e8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>+ 링크 추가</button>
-            </div>
-          </div>
-        )}
+      <div style={{ textAlign: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>
+        <h2>로그인</h2>
+        <form onSubmit={async (e) => { e.preventDefault(); try { await signInWithEmailAndPassword(auth, email, password); setIsLoggedIn(true); } catch(err) { alert('실패'); } }} style={{ display: 'inline-flex', flexDirection: 'column', gap: '10px' }}>
+          <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={{ padding: '10px' }} />
+          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{ padding: '10px' }} />
+          <button type="submit" style={{ padding: '10px', background: '#d32f2f', color: 'white', border: 'none' }}>로그인</button>
+        </form>
       </div>
     );
   }
 
-  // 로그인 전
+  const activeTab = tabs.find(t => t.id === activeTabId);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '100px', fontFamily: 'sans-serif' }}>
-      <h2 style={{ color: '#d32f2f' }}>어드민 로그인</h2>
-      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '300px' }}>
-        <input type="email" placeholder="이메일" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: '12px' }} />
-        <input type="password" placeholder="비밀번호" value={password} onChange={(e) => setPassword(e.target.value)} style={{ padding: '12px' }} />
-        <button type="submit" style={{ padding: '12px', backgroundColor: '#d32f2f', color: 'white', border: 'none', cursor: 'pointer' }}>로그인</button>
-      </form>
+    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <h2>⚙️ 어드민 (순서 변경 가능)</h2>
+        <button onClick={() => signOut(auth)}>로그아웃</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: '5px', marginBottom: '20px' }}>
+        <input type="text" placeholder="새 탭 이름" value={newTabName} onChange={e => setNewTabName(e.target.value)} style={{ flex: 1, padding: '10px' }} />
+        <button onClick={handleAddTab}>탭 추가</button>
+      </div>
+
+      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '2px solid #eee', marginBottom: '20px' }}>
+        {tabs.map(tab => (
+          <div key={tab.id} onClick={() => setActiveTabId(tab.id)} style={{ padding: '10px 20px', cursor: 'pointer', borderBottom: activeTabId === tab.id ? '3px solid #d32f2f' : '3px solid transparent', color: activeTabId === tab.id ? '#d32f2f' : '#666' }}>
+            {tab.name}
+          </div>
+        ))}
+      </div>
+
+      {activeTab && (
+        <div>
+          {/* 드래그 앤 드롭 컨텍스트 시작 */}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={activeTab.links.map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
+              <ul style={{ listStyle: 'none', padding: 0 }}>
+                {activeTab.links.map((link, idx) => (
+                  <SortableLinkItem 
+                    key={`link-${idx}`} 
+                    id={`link-${idx}`} 
+                    link={link} 
+                    idx={idx}
+                    editingIndex={editingLinkIndex}
+                    editTitle={editLinkTitle}
+                    setEditTitle={setEditLinkTitle}
+                    editUrl={editLinkUrl}
+                    setEditUrl={setEditLinkUrl}
+                    onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }}
+                    onDelete={handleDeleteLink}
+                    onSave={async () => {
+                      const newLinks = [...activeTab.links];
+                      newLinks[idx] = { title: editLinkTitle, url: editLinkUrl };
+                      await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks });
+                      setEditingLinkIndex(null);
+                    }}
+                    onCancel={() => setEditingLinkIndex(null)}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+
+          <div style={{ display: 'flex', gap: '5px', marginTop: '20px', background: '#f5f5f5', padding: '15px', borderRadius: '8px' }}>
+            <input type="text" placeholder="제목" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '8px' }} />
+            <input type="text" placeholder="URL" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '8px' }} />
+            <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '4px' }}>링크 추가</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
