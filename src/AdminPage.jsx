@@ -51,29 +51,64 @@ function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
 function SortableLinkItem({ id, link, idx, onEdit, onDelete, editingIndex, editTitle, setEditTitle, editUrl, setEditUrl, onSave, onCancel }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
-    transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', marginBottom: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '12px', gap: '10px'
+    transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', marginBottom: '8px', borderRadius: '4px', display: 'flex', alignItems: 'center', padding: '12px', gap: '12px'
   };
   return (
     <li ref={setNodeRef} style={style}>
-      <div {...attributes} {...listeners} style={{ cursor: 'grab', color: '#ccc' }}>⠿</div>
+      {/* ✋ 모던한 드래그(Grip) 아이콘 */}
+      <div {...attributes} {...listeners} style={{ cursor: 'grab', color: '#aaa', display: 'flex' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>
+        </svg>
+      </div>
+
       <div style={{ flex: 1 }}>
         {editingIndex === idx ? (
           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-            <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} style={{ flex: 1, padding: '5px' }} />
-            <input type="text" value={editUrl} onChange={e => setEditUrl(e.target.value)} style={{ flex: 2, padding: '5px' }} />
-            <button onClick={onSave} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '5px' }}>저장</button>
-            <button onClick={onCancel} style={{ padding: '5px' }}>취소</button>
+            <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            <input type="text" value={editUrl} onChange={e => setEditUrl(e.target.value)} style={{ flex: 2, padding: '6px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            <button onClick={onSave} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>저장</button>
+            <button onClick={onCancel} style={{ padding: '6px 12px', borderRadius: '4px', border: '1px solid #ccc', background: '#fff', cursor: 'pointer' }}>취소</button>
           </div>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ wordBreak: 'break-all' }}>
-              <strong>{link.title}</strong> <br/>
-              <span style={{ color: 'gray', fontSize: '12px' }}>{link.url}</span>
+              <strong style={{ fontSize: '15px', color: '#202124' }}>{link.title}</strong> <br/>
+              <span style={{ color: '#5f6368', fontSize: '12px' }}>{link.url}</span>
             </div>
-            <div style={{ flexShrink: 0 }}>
-              <button onClick={() => onEdit(idx, link)} style={{ marginRight: '5px' }}>✏️</button>
-              <button onClick={() => onDelete(link)}>🗑️</button>
+            
+            {/* ✏️ 🗑️ 모던한 수정/삭제 아이콘 영역 */}
+            <div style={{ flexShrink: 0, display: 'flex', gap: '4px' }}>
+              {/* 수정 버튼 (Pen) */}
+              <button 
+                onClick={() => onEdit(idx, link)} 
+                title="수정하기"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#5f6368', padding: '6px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f3f4'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+              </button>
+
+              {/* 삭제 버튼 (Trash) */}
+              <button 
+                onClick={() => onDelete(link)} 
+                title="삭제하기"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#d32f2f', padding: '6px', display: 'flex', alignItems: 'center', borderRadius: '4px' }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fce8e6'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18"></path>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+              </button>
             </div>
+            
           </div>
         )}
       </div>
