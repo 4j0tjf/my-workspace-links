@@ -38,14 +38,20 @@ function UserPage() {
   };
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(query(collection(db, 'tabs'), orderBy('order', 'asc')), (snapshot) => {
-      const tabData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setTabs(tabData);
-      if (tabData.length > 0 && activeTab === '') setActiveTab(tabData[0].id);
-      setLoading(false);
+  const unsubscribe = onSnapshot(query(collection(db, 'tabs'), orderBy('order', 'asc')), (snapshot) => {
+    const tabData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setTabs(tabData);
+    
+    // 콜백 함수를 사용해 의존성 경고(Warning)를 우회하여 완벽히 해결!
+    setActiveTab(prev => {
+      if (tabData.length > 0 && prev === '') return tabData[0].id;
+      return prev;
     });
-    return () => unsubscribe();
-  }, [activeTab]);
+    
+    setLoading(false);
+  });
+  return () => unsubscribe();
+}, []);
 
   const searchResults = tabs.flatMap(tab => 
     (tab.links || []).map((link, index) => ({ tab, link, index }))
