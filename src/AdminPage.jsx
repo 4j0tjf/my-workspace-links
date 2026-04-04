@@ -17,7 +17,6 @@ const formatAndValidateUrl = (url) => {
   catch (error) { return null; }
 };
 
-/* --- 🔍 하이라이트 컴포넌트 (검색 결과용) --- */
 function HighlightText({ text, highlight }) {
   if (!highlight.trim()) return <span>{text}</span>;
   const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -32,7 +31,6 @@ function HighlightText({ text, highlight }) {
   );
 }
 
-/* --- 드래그 가능한 탭 아이템 (☰ 제거됨) --- */
 function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -42,7 +40,6 @@ function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
     fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px'
   };
   return (
-    /* ✨ ✨ 모던한 메뉴 아이콘 추가 */
     <div ref={setNodeRef} style={style} onClick={() => setActiveTabId(tab.id)} {...attributes} {...listeners}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
       {tab.name}
@@ -50,7 +47,6 @@ function SortableTabItem({ id, tab, activeTabId, setActiveTabId }) {
   );
 }
 
-/* --- 드래그 가능한 링크 아이템 (모던 SVG 아이콘 유지) --- */
 function SortableLinkItem({ id, link, idx, onEdit, onDelete, editingIndex, editTitle, setEditTitle, editUrl, setEditUrl, onSave, onCancel }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -102,8 +98,11 @@ function AdminPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTabName, setNewTabName] = useState('');
 
+  // ✨ 새 링크 추가 팝업창(Modal) 상태 관리
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
+  
   const [editingLinkIndex, setEditingLinkIndex] = useState(null);
   const [editLinkTitle, setEditLinkTitle] = useState('');
   const [editLinkUrl, setEditLinkUrl] = useState('');
@@ -132,7 +131,6 @@ function AdminPage() {
     return () => unsubscribe();
   }, [isLoggedIn, activeTabId]);
 
-  /* --- 💾 데이터 백업/복구 로직 --- */
   const handleExportData = () => {
     if (tabs.length === 0) return toast.error('백업할 데이터가 없습니다.');
     try {
@@ -171,7 +169,6 @@ function AdminPage() {
     reader.readAsText(file);
   };
 
-  /* --- 기본 액션 로직 --- */
   const handleLogin = async (e) => {
     e.preventDefault();
     try { await signInWithEmailAndPassword(auth, email, password); setIsLoggedIn(true); toast.success('관리자로 로그인되었습니다!'); } 
@@ -197,10 +194,12 @@ function AdminPage() {
     if (!validatedUrl) return toast.error('올바른 웹사이트 주소 형식이 아닙니다.');
     const currentTab = tabs.find(t => t.id === activeTabId);
     await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
-    setNewLinkTitle(''); setNewLinkUrl(''); toast.success('링크가 추가되었습니다!');
+    
+    setNewLinkTitle(''); setNewLinkUrl(''); 
+    setIsLinkModalOpen(false); // ✨ 성공 시 팝업 닫기
+    toast.success('링크가 추가되었습니다!');
   };
 
-  /* --- 📋 엑셀 대량 추가(Bulk Add) 로직 --- */
   const handleBulkAdd = async () => {
     if (!bulkText.trim()) return toast.error('입력된 데이터가 없습니다.');
     const lines = bulkText.split('\n');
@@ -208,7 +207,7 @@ function AdminPage() {
     let errorCount = 0;
     lines.forEach(line => {
       if (!line.trim()) return;
-      const parts = line.split('\t'); Part
+      const parts = line.split('\t'); 
       if (parts.length >= 2) {
         const title = parts[0].trim();
         const rawUrl = parts[1].trim();
@@ -294,7 +293,6 @@ function AdminPage() {
             {searchResults.map((res, i) => (
               <li key={i} style={{ backgroundColor: '#fff', border: '1px solid #eee', marginBottom: '10px', borderRadius: '8px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ wordBreak: 'break-all' }}>
-                   {/* ✨ ✨ 검색 결과의 📂 제거 */}
                    <span style={{ fontSize: '11px', color: '#1a73e8', fontWeight: 'bold' }}>{res.tab.name}</span><br/>
                    <HighlightText text={res.link.title} highlight={searchQuery} /><br/>
                    <small style={{ color: 'gray' }}><HighlightText text={res.link.url} highlight={searchQuery} /></small>
@@ -306,20 +304,16 @@ function AdminPage() {
         </div>
       ) : (
         <>
-          {/* ✨ ✨ 투박한 이모지 제거 및 모던 SVG 아이콘 적용 영역 */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', flexWrap: 'wrap' }}>
-            {/* + 제거, SVG 추가 */}
             <button onClick={() => setIsModalOpen(true)} style={{ flex: 1, minWidth: '150px', padding: '12px', backgroundColor: '#333', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 새 탭 만들기
             </button>
             <input type="file" accept=".json" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportData} />
-            {/* 📂 제거, SVG 추가 */}
             <button onClick={() => fileInputRef.current.click()} style={{ flex: 1, minWidth: '150px', padding: '12px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
                 복구 (.json)
             </button>
-            {/* 💾 제거, SVG 추가 */}
             <button onClick={handleExportData} style={{ flex: 1, minWidth: '150px', padding: '12px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                 백업 (.json)
@@ -338,70 +332,70 @@ function AdminPage() {
 
           {activeTab && (
             <div style={{ background: '#fcfcfc', padding: '25px', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-              {/* ✨ ✨ 1. 📂 제거 및 탭 명 우측에 링크 개수 (n) 표시 적용 영역 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>
-                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                 <h3 style={{ margin: 0, fontSize: '18px' }}>
-                    {activeTab.name} 관리 
-                    <span style={{ marginLeft: '8px', color: '#888', fontWeight: 'normal', fontSize: '15px' }}>
-                        ({activeTab.links?.length || 0})
-                    </span>
-                 </h3>
+              
+              {/* ✨ 1. 헤더 구조 개편: 우측에 [링크 추가] 및 [대량 추가] 버튼 배치 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid #eee', flexWrap: 'wrap', gap: '10px' }}>
+                 
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    <h3 style={{ margin: 0, fontSize: '18px' }}>
+                        {activeTab.name} 관리 
+                        <span style={{ marginLeft: '8px', color: '#888', fontWeight: 'normal', fontSize: '15px' }}>
+                            ({activeTab.links?.length || 0})
+                        </span>
+                    </h3>
+                 </div>
+
+                 {/* 버튼 그룹 (우측 정렬) */}
+                 <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setIsLinkModalOpen(true)} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'6px' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        링크 추가
+                    </button>
+                    <button onClick={() => setShowBulkAdd(!showBulkAdd)} style={{ background: showBulkAdd ? '#5f6368' : '#fff', color: showBulkAdd ? 'white' : '#1a73e8', border: '1px solid #1a73e8', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'6px' }}>
+                        {showBulkAdd ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                        )}
+                        {showBulkAdd ? '닫기' : '대량 추가'}
+                    </button>
+                 </div>
               </div>
+
+              {/* ✨ 2. 대량 추가 텍스트 영역 (버튼 바로 아래 배치) */}
+              {showBulkAdd && (
+                <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
+                    💡 <b>방법:</b> 엑셀/스프레드시트에서 <b>[A열: 제목, B열: URL]</b> 영역을 복사(`Ctrl+C`) 후 아래에 붙여넣기(`Ctrl+V`) 하세요.
+                  </p>
+                  <textarea 
+                    placeholder="여기에 복사한 데이터를 붙여넣으세요..."
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    style={{ width: '100%', height: '120px', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', marginBottom: '10px', resize: 'vertical', outline: 'none', fontSize: '14px', lineHeight: '1.5' }}
+                  />
+                  <button onClick={handleBulkAdd} style={{ width: '100%', background: '#4caf50', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}>
+                    싹 다 추가하기 🚀
+                  </button>
+                </div>
+              )}
 
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLinkDragEnd}>
                 <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
-                  <ul style={{ listStyle: 'none', padding: 0, marginBottom: '25px' }}>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                     {activeTab.links?.map((link, idx) => (
                       <SortableLinkItem key={`link-${idx}`} id={`link-${idx}`} link={link} idx={idx} editingIndex={editingLinkIndex} editTitle={editLinkTitle} setEditTitle={setEditLinkTitle} editUrl={editLinkUrl} setEditUrl={setEditLinkUrl} onEdit={(i, l) => { setEditingLinkIndex(i); setEditLinkTitle(l.title); setEditLinkUrl(l.url); }} onDelete={async (l) => { if(window.confirm('삭제하시겠습니까?')) { await updateDoc(doc(db, 'tabs', activeTabId), { links: activeTab.links.filter(item => item !== l) }); toast.success('삭제되었습니다.'); } }} onSave={async () => { const validatedUrl = formatAndValidateUrl(editLinkUrl); if (!validatedUrl) return toast.error('올바른 웹사이트 주소를 입력해주세요!'); const newLinks = [...activeTab.links]; newLinks[idx] = { title: editLinkTitle, url: validatedUrl }; await updateDoc(doc(db, 'tabs', activeTabId), { links: newLinks }); setEditingLinkIndex(null); toast.success('성공적으로 수정되었습니다.'); }} onCancel={() => setEditingLinkIndex(null)} />
                     ))}
                   </ul>
                 </SortableContext>
               </DndContext>
-
-              <div style={{ marginTop: '20px', background: '#f5f5f5', padding: '20px', borderRadius: '8px', border: '1px solid #eee' }}>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: showBulkAdd ? '15px' : '0' }}>
-                  <input type="text" placeholder="제목" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} style={{ flex: 1, padding: '10px', minWidth: '120px', borderRadius: '4px', border: '1px solid #ddd' }} />
-                  <input type="text" placeholder="URL (google.com만 쳐도 됨)" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{ flex: 2, padding: '10px', minWidth: '180px', borderRadius: '4px', border: '1px solid #ddd' }} />
-                  <button onClick={handleAddLink} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '10px 20px', whiteSpace: 'nowrap', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>추가</button>
-                  
-                  {/* ✨ ✨ 📋 제거 및 모던 SVG 아이콘 적용 */}
-                  <button 
-                    onClick={() => setShowBulkAdd(!showBulkAdd)} 
-                    style={{ background: showBulkAdd ? '#5f6368' : '#fff', color: showBulkAdd ? 'white' : '#1a73e8', border: '1px solid #1a73e8', padding: '10px 20px', whiteSpace: 'nowrap', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'8px' }}
-                  >
-                    {showBulkAdd ? (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    ) : (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
-                    )}
-                    {showBulkAdd ? '닫기' : '대량 추가'}
-                  </button>
-                </div>
-
-                {showBulkAdd && (
-                  <div style={{ borderTop: '1px solid #ddd', paddingTop: '15px', marginTop: '15px' }}>
-                    <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
-                      💡 <b>방법:</b> 엑셀/스프레드시트에서 <b>[A열: 제목, B열: URL]</b> 영역을 복사(`Ctrl+C`) 후 아래에 붙여넣기(`Ctrl+V`) 하세요.
-                    </p>
-                    <textarea 
-                      placeholder="여기에 복사한 데이터를 붙여넣으세요..."
-                      value={bulkText}
-                      onChange={(e) => setBulkText(e.target.value)}
-                      style={{ width: '100%', height: '150px', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', marginBottom: '10px', resize: 'vertical', outline: 'none', fontSize: '14px', lineHeight: '1.5' }}
-                    />
-                    <button onClick={handleBulkAdd} style={{ width: '100%', background: '#4caf50', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>
-                      싹 다 추가하기 🚀
-                    </button>
-                  </div>
-                )}
-                
-              </div>
             </div>
           )}
         </>
       )}
 
+      {/* 탭 추가 팝업 */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -415,6 +409,25 @@ function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* ✨ 3. 새 링크 추가 팝업창 (Modal) */}
+      {isLinkModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3 style={{marginTop: 0}}>🔗 새 링크 추가</h3>
+            <p style={{ fontSize: '13px', color: 'gray', marginBottom: '15px' }}>현재 탭({activeTab?.name})에 추가될 링크 정보를 입력하세요.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+              <input type="text" placeholder="링크 제목 (예: 네이버)" value={newLinkTitle} onChange={e => setNewLinkTitle(e.target.value)} autoFocus style={{width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box'}} />
+              <input type="text" placeholder="URL (예: naver.com)" value={newLinkUrl} onChange={e => setNewLinkUrl(e.target.value)} style={{width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box'}} onKeyDown={(e) => { if(e.key === 'Enter') handleAddLink(); }} />
+            </div>
+            <div className="modal-btns" style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
+              <button onClick={() => { setIsLinkModalOpen(false); setNewLinkTitle(''); setNewLinkUrl(''); }} className="btn-cancel" style={{padding: '8px 15px', borderRadius: '4px', border: '1px solid #ddd', background: '#fff', cursor: 'pointer'}}>취소</button>
+              <button onClick={handleAddLink} className="btn-confirm" style={{padding: '8px 15px', borderRadius: '4px', border: 'none', background: '#1a73e8', color: 'white', cursor: 'pointer', fontWeight: 'bold'}}>추가하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
     </div>
   );
 }
