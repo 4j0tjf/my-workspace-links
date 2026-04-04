@@ -26,7 +26,7 @@ function MemoApp() {
 
   return (
     <div className="container">
-      <h2 className="title">📝 메모장</h2>
+      <h2 className="title">메모장</h2>
       
       {/* --- 메모 입력 영역 --- */}
       <div style={{ marginBottom: '30px' }}>
