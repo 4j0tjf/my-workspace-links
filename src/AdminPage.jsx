@@ -362,25 +362,7 @@ function AdminPage() {
                     </button>
                  </div>
               </div>
-
-              {/* ✨ 2. 대량 추가 텍스트 영역 (버튼 바로 아래 배치) */}
-              {showBulkAdd && (
-                <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
-                  <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
-                    💡 <b>방법:</b> 엑셀/스프레드시트에서 <b>[A열: 제목, B열: URL]</b> 영역을 복사(`Ctrl+C`) 후 아래에 붙여넣기(`Ctrl+V`) 하세요.
-                  </p>
-                  <textarea 
-                    placeholder="여기에 복사한 데이터를 붙여넣으세요..."
-                    value={bulkText}
-                    onChange={(e) => setBulkText(e.target.value)}
-                    style={{ width: '100%', height: '120px', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', marginBottom: '10px', resize: 'vertical', outline: 'none', fontSize: '14px', lineHeight: '1.5' }}
-                  />
-                  <button onClick={handleBulkAdd} style={{ width: '100%', background: '#4caf50', color: 'white', border: 'none', padding: '12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}>
-                    싹 다 추가하기 🚀
-                  </button>
-                </div>
-              )}
-
+        
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLinkDragEnd}>
                 <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -395,7 +377,7 @@ function AdminPage() {
         </>
       )}
 
-      {/* 탭 추가 팝업 */}
+      {/* 1. 탭 추가 팝업 */}
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -410,7 +392,7 @@ function AdminPage() {
         </div>
       )}
 
-      {/* ✨ 3. 새 링크 추가 팝업창 (Modal) */}
+      {/* 2. 새 링크 단일 추가 팝업 */}
       {isLinkModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -423,6 +405,28 @@ function AdminPage() {
             <div className="modal-btns" style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
               <button onClick={() => { setIsLinkModalOpen(false); setNewLinkTitle(''); setNewLinkUrl(''); }} className="btn-cancel" style={{padding: '8px 15px', borderRadius: '4px', border: '1px solid #ddd', background: '#fff', cursor: 'pointer'}}>취소</button>
               <button onClick={handleAddLink} className="btn-confirm" style={{padding: '8px 15px', borderRadius: '4px', border: 'none', background: '#1a73e8', color: 'white', cursor: 'pointer', fontWeight: 'bold'}}>추가하기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ 3. 대량 추가 팝업 (영역 확장이 아닌 팝업창으로 변경!) */}
+      {showBulkAdd && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <h3 style={{marginTop: 0}}>📋 엑셀 대량 추가</h3>
+            <p style={{ fontSize: '13px', color: 'gray', marginBottom: '15px', lineHeight: '1.5' }}>
+              💡 <b>방법:</b> 엑셀/스프레드시트에서 <b>[A열: 제목, B열: URL]</b> 영역을 복사(`Ctrl+C`) 후 아래에 붙여넣기(`Ctrl+V`) 하세요.
+            </p>
+            <textarea 
+              placeholder="여기에 복사한 데이터를 붙여넣으세요..."
+              value={bulkText}
+              onChange={(e) => setBulkText(e.target.value)}
+              style={{ width: '100%', height: '150px', padding: '12px', borderRadius: '6px', border: '1px solid #ddd', boxSizing: 'border-box', marginBottom: '20px', resize: 'vertical', outline: 'none', fontSize: '14px', lineHeight: '1.5' }}
+            />
+            <div className="modal-btns" style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
+              <button onClick={() => { setShowBulkAdd(false); setBulkText(''); }} className="btn-cancel" style={{padding: '8px 15px', borderRadius: '4px', border: '1px solid #ddd', background: '#fff', cursor: 'pointer'}}>취소</button>
+              <button onClick={handleBulkAdd} className="btn-confirm" style={{padding: '8px 15px', borderRadius: '4px', border: 'none', background: '#4caf50', color: 'white', cursor: 'pointer', fontWeight: 'bold'}}>싹 다 추가하기 🚀</button>
             </div>
           </div>
         </div>
