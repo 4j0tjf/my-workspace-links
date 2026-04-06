@@ -9,7 +9,6 @@ import { CSS } from '@dnd-kit/utilities';
 
 import toast, { Toaster } from 'react-hot-toast';
 
-/* --- 🌐 URL 검증 함수 --- */
 const formatAndValidateUrl = (url) => {
   let formattedUrl = url.trim();
   if (!/^https?:\/\//i.test(formattedUrl)) formattedUrl = `https://${formattedUrl}`;
@@ -98,7 +97,6 @@ function AdminPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTabName, setNewTabName] = useState('');
 
-  // ✨ 새 링크 추가 팝업창(Modal) 상태 관리
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
@@ -188,6 +186,23 @@ function AdminPage() {
     } catch (error) { toast.error('탭 추가 중 오류가 발생했습니다.'); }
   };
 
+  // ✨ 탭 삭제 기능 추가!
+  const handleDeleteTab = async () => {
+    const currentTab = tabs.find(t => t.id === activeTabId);
+    if (!currentTab) return;
+    
+    // 실수 방지를 위한 강력한 경고창
+    if (window.confirm(`🚨 정말 [${currentTab.name}] 탭을 삭제하시겠습니까?\n이 탭에 포함된 모든 링크 데이터가 영구적으로 삭제됩니다.`)) {
+      try {
+        await deleteDoc(doc(db, 'tabs', activeTabId));
+        setActiveTabId(''); // 삭제 후 탭 선택 초기화
+        toast.success('탭이 성공적으로 삭제되었습니다.');
+      } catch (error) {
+        toast.error('탭 삭제 중 오류가 발생했습니다.');
+      }
+    }
+  };
+
   const handleAddLink = async () => {
     if (!newLinkTitle || !newLinkUrl) return toast.error('제목과 URL을 모두 입력해주세요.');
     const validatedUrl = formatAndValidateUrl(newLinkUrl);
@@ -195,9 +210,7 @@ function AdminPage() {
     const currentTab = tabs.find(t => t.id === activeTabId);
     await updateDoc(doc(db, 'tabs', activeTabId), { links: [...(currentTab.links || []), { title: newLinkTitle, url: validatedUrl }] });
     
-    setNewLinkTitle(''); setNewLinkUrl(''); 
-    setIsLinkModalOpen(false); // ✨ 성공 시 팝업 닫기
-    toast.success('링크가 추가되었습니다!');
+    setNewLinkTitle(''); setNewLinkUrl(''); setIsLinkModalOpen(false); toast.success('링크가 추가되었습니다!');
   };
 
   const handleBulkAdd = async () => {
@@ -333,9 +346,7 @@ function AdminPage() {
           {activeTab && (
             <div style={{ background: '#fcfcfc', padding: '25px', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
               
-              {/* ✨ 1. 헤더 구조 개편: 우측에 [링크 추가] 및 [대량 추가] 버튼 배치 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid #eee', flexWrap: 'wrap', gap: '10px' }}>
-                 
                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                     <h3 style={{ margin: 0, fontSize: '18px' }}>
@@ -346,23 +357,31 @@ function AdminPage() {
                     </h3>
                  </div>
 
-                 {/* 버튼 그룹 (우측 정렬) */}
+                 {/* ✨ 탭 삭제 버튼이 포함된 상단 버튼 영역 */}
                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {/* 🗑️ 현재 탭 삭제 버튼 (빨간색) */}
+                    <button 
+                      onClick={handleDeleteTab} 
+                      style={{ background: '#fff', color: '#d32f2f', border: '1px solid #fce8e6', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'6px' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fce8e6'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+                      title="이 탭을 영구적으로 삭제합니다."
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                        현재 탭 삭제
+                    </button>
+                    
                     <button onClick={() => setIsLinkModalOpen(true)} style={{ background: '#1a73e8', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'6px' }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         링크 추가
                     </button>
-                    <button onClick={() => setShowBulkAdd(!showBulkAdd)} style={{ background: showBulkAdd ? '#5f6368' : '#fff', color: showBulkAdd ? 'white' : '#1a73e8', border: '1px solid #1a73e8', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'6px' }}>
-                        {showBulkAdd ? (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        ) : (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
-                        )}
-                        {showBulkAdd ? '닫기' : '대량 추가'}
+                    <button onClick={() => setShowBulkAdd(true)} style={{ background: '#fff', color: '#1a73e8', border: '1px solid #1a73e8', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', display:'flex', alignItems:'center', gap:'6px' }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+                        대량 추가
                     </button>
                  </div>
               </div>
-        
+
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLinkDragEnd}>
                 <SortableContext items={(activeTab.links || []).map((_, i) => `link-${i}`)} strategy={verticalListSortingStrategy}>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -392,7 +411,7 @@ function AdminPage() {
         </div>
       )}
 
-      {/* 2. 새 링크 단일 추가 팝업 */}
+      {/* 2. 새 링크 추가 팝업 */}
       {isLinkModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -410,7 +429,7 @@ function AdminPage() {
         </div>
       )}
 
-      {/* ✨ 3. 대량 추가 팝업 (영역 확장이 아닌 팝업창으로 변경!) */}
+      {/* 3. 대량 추가 팝업 */}
       {showBulkAdd && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '500px' }}>
